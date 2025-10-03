@@ -222,55 +222,37 @@ namespace Bll.Services.ApService
             apiResponse.data = roleWisePermissions;
             return apiResponse;
         }
-        public ApiResponse GetUserNestedMenuList(List<PermissionInfoViewModel> PermissionInfoList)
+        public ApiResponse GetUserNestedMenuList(List<PermissionInfoViewModel> permissionInfoList)
         {
             ApiResponse apiResponse = new();
-            List<NestedMenuInfoViewModel> nestedMenuInfoList = new List<NestedMenuInfoViewModel>();
-            foreach (var rootParent in PermissionInfoList)
-            {
-                if (rootParent.ParentMenuId == null)
-                {
-                    nestedMenuInfoList.Add(new NestedMenuInfoViewModel
-                    {
-                        Id = (int)rootParent.MenuId,
-                        Name = rootParent.MenuName,
-                        Url = rootParent.MenuUrl,
-                        ImageUrl = "fa fa-times",
-                        ControllerName = rootParent.ControllerName,
-                        ActionName = rootParent.ActionName,
-                        Order = rootParent.Order
-                    });
-                }
-                if (nestedMenuInfoList.Any())
-                {
-                    foreach (var parent in nestedMenuInfoList)
-                    {
-                        var child = PermissionInfoList.Where(a => a.ParentMenuId == parent.Id && (a.IsAction == 0 || a.IsAction == null)).OrderBy(a => a.Order).ToList();
-                        if (child.Count > 0)
-                        {
-                            List<ChildMenuViewModel> childMenuViewModels = new List<ChildMenuViewModel>();
-                            foreach (var item in child)
-                            {
-                                childMenuViewModels.Add(new ChildMenuViewModel
-                                {
-                                    Id = (int)item.MenuId,
-                                    Name = item.MenuName,
-                                    Url = item.MenuUrl,
-                                    ImageUrl = "fa fa-times",
-                                    ControllerName = item.ControllerName,
-                                    ActionName = item.ActionName,
-                                    Order = item.Order
-                                });
-                            }
-                            parent.ChildMenuViewModels = childMenuViewModels;
-                        }
-                    }
-                }
-            }
+
+            var nestedMenuInfoList = BuildMenuTree(permissionInfoList);
+
             apiResponse.code = StatusCodes.Status200OK;
             apiResponse.messages = new List<string>() { "Success" };
             apiResponse.data = nestedMenuInfoList;
+
             return apiResponse;
+        }
+        private List<NestedMenuInfoViewModel> BuildMenuTree(List<PermissionInfoViewModel> allMenus, long? parentId = null, HashSet<long>? visited = null)
+        {
+            visited ??= new HashSet<long>();
+            return allMenus
+                .Where(m => m.ParentMenuId == parentId && (m.IsAction == 0 || m.IsAction == null))
+                .OrderBy(m => m.Order)
+                .Where(m => visited.Add(m.MenuId))
+                .Select(m => new NestedMenuInfoViewModel
+                {
+                    Id = (int)m.MenuId,
+                    Name = m.MenuName,
+                    Url = m.MenuUrl,
+                    ImageUrl = "fa fa-times",
+                    ControllerName = m.ControllerName,
+                    ActionName = m.ActionName,
+                    Order = m.Order,
+                    ChildMenuViewModels = BuildMenuTree(allMenus, m.MenuId, visited)
+                })
+                .ToList();
         }
     }
 }

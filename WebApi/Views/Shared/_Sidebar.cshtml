@@ -179,7 +179,7 @@
                             }
 
                         }
-                        if (item.ChildMenuViewModels == null && item.ActionName != "#")
+                        if (item.ChildMenuViewModels != null && item.ChildMenuViewModels.Count == 0 && item.ActionName != "#")
                         {
                             <li class="nav-item @parentActiveClass">
                                 <a class="nav-link" href="@Url.Action(item.ActionName,item.ControllerName)">
