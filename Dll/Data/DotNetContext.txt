@@ -1,0 +1,432 @@
+using System;
+using System.Collections.Generic;
+using Dll.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Dll.Data;
+
+public partial class DotNetContext : DbContext
+{
+    public DotNetContext()
+    {
+    }
+
+    public DotNetContext(DbContextOptions<DotNetContext> options)
+        : base(options)
+    {
+    }
+
+    #region Ap Entities
+    public virtual DbSet<ApMenu> ApMenus { get; set; }
+
+    public virtual DbSet<ApMenuAction> ApMenuActions { get; set; }
+
+    public virtual DbSet<ApOtpHistory> ApOtpHistories { get; set; }
+
+    public virtual DbSet<ApPermission> ApPermissions { get; set; }
+
+    public virtual DbSet<ApRole> ApRoles { get; set; }
+
+    public virtual DbSet<ApRolePermission> ApRolePermissions { get; set; }
+
+    public virtual DbSet<ApUser> ApUsers { get; set; }
+
+    public virtual DbSet<ApUserRole> ApUserRoles { get; set; }
+    #endregion
+
+
+    #region Trx Entities
+    public virtual DbSet<TrxFeeDistributionConfig> TrxFeeDistributionConfigs { get; set; }
+
+    public virtual DbSet<TrxFeePackage> TrxFeePackages { get; set; }
+
+    public virtual DbSet<TrxFeePackageDetail> TrxFeePackageDetails { get; set; }
+
+    public virtual DbSet<TrxFeeSettlement> TrxFeeSettlements { get; set; }
+
+    public virtual DbSet<TrxFeeSlab> TrxFeeSlabs { get; set; }
+
+    public virtual DbSet<TrxInfo> TrxInfos { get; set; }
+
+    public virtual DbSet<TrxJournal> TrxJournals { get; set; }
+
+    public virtual DbSet<TrxLimitPackage> TrxLimitPackages { get; set; }
+
+    public virtual DbSet<TrxLimitPackageDetail> TrxLimitPackageDetails { get; set; }
+
+    public virtual DbSet<TrxStakeholder> TrxStakeholders { get; set; }
+
+    public virtual DbSet<TrxTypeInfo> TrxTypeInfos { get; set; }
+
+    public virtual DbSet<TrxWallet> TrxWallets { get; set; }
+
+    public virtual DbSet<TrxDailyBalance> TrxDailyBalances { get; set; }
+
+    public virtual DbSet<TrxLimitPerDay> TrxLimitPerDays { get; set; }
+
+    public virtual DbSet<TrxLimitPerMonth> TrxLimitPerMonths { get; set; }
+
+    #endregion
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ApMenu>(entity =>
+        {
+            entity.ToTable("ApMenu");
+        });
+
+        modelBuilder.Entity<ApMenuAction>(entity =>
+        {
+            entity.ToTable("ApMenuAction");
+        });
+
+        modelBuilder.Entity<ApOtpHistory>(entity =>
+        {
+            entity.ToTable("ApOtpHistory");
+
+            entity.Property(e => e.Ikey).HasColumnName("IKey");
+            entity.Property(e => e.Ivalue).HasColumnName("IValue");
+        });
+
+        modelBuilder.Entity<ApPermission>(entity =>
+        {
+            entity.ToTable("ApPermission");
+        });
+
+        modelBuilder.Entity<ApRole>(entity =>
+        {
+            entity.ToTable("ApRole");
+        });
+
+        modelBuilder.Entity<ApRolePermission>(entity =>
+        {
+            entity.ToTable("ApRolePermission");
+        });
+
+        modelBuilder.Entity<ApUser>(entity =>
+        {
+            entity.ToTable("ApUser");
+        });
+
+        modelBuilder.Entity<ApUserRole>(entity =>
+        {
+            entity.ToTable("ApUserRole");
+        });
+
+        modelBuilder.Entity<TrxFeeDistributionConfig>(entity =>
+        {
+            entity
+                .HasNoKey()
+                .ToTable("TrxFeeDistributionConfig");
+
+            entity.Property(e => e.CreatedBy).HasMaxLength(100);
+            entity.Property(e => e.FeeInPercentage).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.TrxFeeDistributionConfigId).ValueGeneratedOnAdd();
+            entity.Property(e => e.UpdatedBy).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<TrxFeePackage>(entity =>
+        {
+            entity.ToTable("TrxFeePackage");
+        });
+
+        modelBuilder.Entity<TrxFeePackageDetail>(entity =>
+        {
+            entity.ToTable("TrxFeePackageDetail");
+
+            entity.Property(e => e.CreatedBy).HasMaxLength(100);
+            entity.Property(e => e.FeeAmountFixed).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FeeAmountInPercentage).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.StaticMaximumFeeAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.UpdatedBy).HasMaxLength(100);
+            entity.Property(e => e.VatDeductPercentOnFeeAmount)
+                .HasDefaultValue(15m)
+                .HasColumnType("decimal(18, 2)");
+        });
+
+        modelBuilder.Entity<TrxFeeSettlement>(entity =>
+        {
+            entity.HasKey(e => e.SettlementId).HasName("PK__TrxFeeSe__7712545A7643F38E");
+
+            entity.ToTable("TrxFeeSettlement");
+
+            entity.Property(e => e.CreatedBy).HasMaxLength(100);
+            entity.Property(e => e.FeeFixedAmount).HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.FeePercentage).HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.TrxId)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.TrxType)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<TrxFeeSlab>(entity =>
+        {
+            entity.ToTable("TrxFeeSlab");
+
+            entity.Property(e => e.Description)
+                .HasMaxLength(200)
+                .IsUnicode(false);
+            entity.Property(e => e.FeeAmountFixed).HasColumnType("numeric(18, 4)");
+            entity.Property(e => e.FeeAmountInPercentage).HasColumnType("numeric(18, 4)");
+            entity.Property(e => e.MaxAmount).HasColumnType("numeric(18, 4)");
+            entity.Property(e => e.MinAmount).HasColumnType("numeric(18, 4)");
+            entity.Property(e => e.SegmentAmount).HasColumnType("numeric(18, 4)");
+            entity.Property(e => e.StaticMaximumFeeAmount).HasColumnType("numeric(18, 4)");
+            entity.Property(e => e.VatDeductPercentOnFeeAmount).HasColumnType("decimal(18, 2)");
+        });
+
+        modelBuilder.Entity<TrxInfo>(entity =>
+        {
+            entity.HasKey(e => e.TrxInfoId).HasName("PK__TrxInfos__8C20B7B23CD6F9F4");
+
+            entity.ToTable("TrxInfo");
+
+            entity.HasIndex(e => e.TrxId, "IX_TrxInfos_TrxId");
+
+            entity.HasIndex(e => e.TrxId, "UQ_TrxInfos_TrxId").IsUnique();
+
+            entity.Property(e => e.AcquirerBankCode).HasMaxLength(50);
+            entity.Property(e => e.AcquirerBankTrxId).HasMaxLength(100);
+            entity.Property(e => e.AcquirerResponseCode).HasMaxLength(50);
+            entity.Property(e => e.AcquirerResponseDescription).HasMaxLength(250);
+            entity.Property(e => e.Amlflagged).HasColumnName("AMLFlagged");
+            entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.CashbackAmount)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.ChargebackStatus).HasMaxLength(50);
+            entity.Property(e => e.ComplianceStatus).HasMaxLength(50);
+            entity.Property(e => e.ConvertedAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.Cost)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.CreatedBy).HasMaxLength(100);
+            entity.Property(e => e.CreditLimitUtilized)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.CurrencyCode).HasMaxLength(50);
+            entity.Property(e => e.CustomerRiskLevel).HasMaxLength(50);
+            entity.Property(e => e.DeviceId).HasMaxLength(100);
+            entity.Property(e => e.DiscountAmount)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.ErrorMessage).HasMaxLength(250);
+            entity.Property(e => e.ExchangeRate).HasColumnType("decimal(18, 6)");
+            entity.Property(e => e.FailureReason).HasMaxLength(250);
+            entity.Property(e => e.Fee)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FeePercentage).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FeeVatPercentage).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FeeVatamount)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FraudDetectionStatus).HasMaxLength(50);
+            entity.Property(e => e.GatewayResponseCode).HasMaxLength(50);
+            entity.Property(e => e.GatewayResponseMessage).HasMaxLength(250);
+            entity.Property(e => e.GatewayTransactionId).HasMaxLength(100);
+            entity.Property(e => e.IdtprefNo)
+                .HasMaxLength(100)
+                .HasColumnName("IDTPRefNo");
+            entity.Property(e => e.IpAddress).HasMaxLength(50);
+            entity.Property(e => e.IsDisputed).HasDefaultValue(false);
+            entity.Property(e => e.IsFeeFixed).HasDefaultValue(false);
+            entity.Property(e => e.IsFlaggedForReview).HasDefaultValue(false);
+            entity.Property(e => e.IsJournal).HasDefaultValue(false);
+            entity.Property(e => e.IsLoanDisbursement).HasDefaultValue(false);
+            entity.Property(e => e.IssuerAccountMasked).HasMaxLength(100);
+            entity.Property(e => e.IssuerBankCode).HasMaxLength(50);
+            entity.Property(e => e.IssuerBankTrxId).HasMaxLength(100);
+            entity.Property(e => e.IssuerResponseCode).HasMaxLength(50);
+            entity.Property(e => e.IssuerResponseDescription).HasMaxLength(250);
+            entity.Property(e => e.Kycstatus)
+                .HasMaxLength(50)
+                .HasColumnName("KYCStatus");
+            entity.Property(e => e.Latitude).HasMaxLength(50);
+            entity.Property(e => e.LoanRepaymentId).HasMaxLength(100);
+            entity.Property(e => e.Longitude).HasMaxLength(50);
+            entity.Property(e => e.OriginalCurrencyCode).HasMaxLength(50);
+            entity.Property(e => e.OtpCode).HasMaxLength(100);
+            entity.Property(e => e.OtpStatus).HasMaxLength(50);
+            entity.Property(e => e.PromoCodeUsed).HasMaxLength(100);
+            entity.Property(e => e.PurposeOfTrx).HasMaxLength(100);
+            entity.Property(e => e.ReceiverBalanceAfterTrx).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.ReconciliationReferenceId).HasMaxLength(100);
+            entity.Property(e => e.ReconciliationStatus).HasMaxLength(50);
+            entity.Property(e => e.RefNoReceivingBank).HasMaxLength(100);
+            entity.Property(e => e.RefNoSendingBank).HasMaxLength(100);
+            entity.Property(e => e.RefTrxId).HasMaxLength(100);
+            entity.Property(e => e.RefundAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.RefundReferenceId).HasMaxLength(100);
+            entity.Property(e => e.RegulatoryReportFlag).HasDefaultValue(false);
+            entity.Property(e => e.Remarks).HasMaxLength(250);
+            entity.Property(e => e.RetryCount).HasDefaultValue(0);
+            entity.Property(e => e.Revenue)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.RiskScore).HasColumnType("decimal(5, 2)");
+            entity.Property(e => e.RouteId).HasMaxLength(100);
+            entity.Property(e => e.SanctionsScreeningStatus).HasMaxLength(50);
+            entity.Property(e => e.SenderBalanceAfterTrx).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.ServiceCharge).HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.SettledAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.SettlementReferenceId).HasMaxLength(100);
+            entity.Property(e => e.SettlementStatus).HasMaxLength(50);
+            entity.Property(e => e.SplitPaymentId).HasMaxLength(100);
+            entity.Property(e => e.SplitPaymentRatio)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(5, 2)");
+            entity.Property(e => e.TaxAmount).HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.TaxPercentage).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.TrxChannel).HasMaxLength(50);
+            entity.Property(e => e.TrxId).HasMaxLength(100);
+            entity.Property(e => e.TrxMode).HasMaxLength(50);
+            entity.Property(e => e.TrxParentId).HasMaxLength(100);
+            entity.Property(e => e.TrxRefId).HasMaxLength(200);
+            entity.Property(e => e.TrxStatus).HasMaxLength(50);
+            entity.Property(e => e.TrxType).HasMaxLength(100);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<TrxJournal>(entity =>
+        {
+            entity.HasKey(e => e.JournalId).HasName("PK__TrJourna__250103E62B12A777");
+
+            entity.ToTable("TrxJournal");
+
+            entity.Property(e => e.BalanceAfterTrx)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.CreatedBy).HasMaxLength(100);
+            entity.Property(e => e.CreditAmount)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.DebitAmount)
+                .HasDefaultValue(0m)
+                .HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.Description)
+                .HasMaxLength(200)
+                .IsUnicode(false);
+            entity.Property(e => e.TrxDate).HasColumnType("datetime");
+            entity.Property(e => e.TrxId)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.TrxType)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(100);
+            entity.Property(e => e.WalletName)
+                .HasMaxLength(100)
+                .IsUnicode(false);
+        });
+
+        modelBuilder.Entity<TrxLimitPackage>(entity =>
+        {
+            entity.ToTable("TrxLimitPackage");
+
+            entity.Property(e => e.WalletHoldAmount).HasColumnType("decimal(18, 2)");
+        });
+
+        modelBuilder.Entity<TrxLimitPackageDetail>(entity =>
+        {
+            entity.ToTable("TrxLimitPackageDetail");
+
+            entity.Property(e => e.MaxTrxAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.MaxTrxAmountPerDay).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.MaxTrxAmountPerMonth).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.MinTrxAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.OtpRequiredAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.TrxGroup)
+                .HasMaxLength(20)
+                .IsUnicode(false);
+        });
+
+        modelBuilder.Entity<TrxStakeholder>(entity =>
+        {
+            entity.HasKey(e => e.StakeholderId).HasName("PK__TrxStake__E07E2397905D499A");
+
+            entity.ToTable("TrxStakeholder");
+
+            entity.Property(e => e.BankCode).HasMaxLength(50);
+            entity.Property(e => e.CreatedBy).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.StakeholderName).HasMaxLength(200);
+            entity.Property(e => e.StakeholderType).HasMaxLength(100);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(100);
+            entity.Property(e => e.WalletUserId).HasMaxLength(50);
+        });
+
+        modelBuilder.Entity<TrxTypeInfo>(entity =>
+        {
+            entity.HasKey(e => e.TrxTypeId).HasName("PK_TrxTypes");
+
+            entity.ToTable("TrxTypeInfo");
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysdatetimeoffset())");
+            entity.Property(e => e.CreatedBy).HasMaxLength(255);
+            entity.Property(e => e.CurrencyCode).HasMaxLength(10);
+            entity.Property(e => e.FeePayee).HasMaxLength(255);
+            entity.Property(e => e.TrxCategory).HasMaxLength(100);
+            entity.Property(e => e.TrxDescription).HasMaxLength(100);
+            entity.Property(e => e.TrxType)
+                .HasMaxLength(255);
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(sysdatetimeoffset())");
+            entity.Property(e => e.UpdatedBy).HasMaxLength(255);
+        });
+
+        modelBuilder.Entity<TrxWallet>(entity =>
+        {
+            entity.HasKey(e => e.WalletId).HasName("PK__Wallet__84D4F90EBA0E34C1");
+
+            entity.ToTable("TrxWallet");
+
+            entity.Property(e => e.CreatedBy).HasMaxLength(100);
+            entity.Property(e => e.LastUpdatedBy).HasMaxLength(100);
+            entity.Property(e => e.Version)
+                .IsRowVersion()
+                .IsConcurrencyToken();
+            entity.Property(e => e.WalletBalance).HasColumnType("decimal(18, 2)");
+        });
+
+        modelBuilder.Entity<TrxDailyBalance>(entity =>
+        {
+            entity.ToTable("TrxDailyBalance");
+
+            entity.Property(e => e.ClosingBalance).HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.Credit).HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.Debit).HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.OpeningBalance).HasColumnType("decimal(18, 4)");
+            entity.Property(e => e.WalletName)
+                .HasMaxLength(100)
+                .IsUnicode(false);
+        });
+
+        modelBuilder.Entity<TrxLimitPerDay>(entity =>
+        {
+            entity.ToTable("TrxLimitPerDay");
+
+            entity.Property(e => e.LastTrxId).HasMaxLength(50);
+            entity.Property(e => e.Month).HasDefaultValue(0);
+            entity.Property(e => e.TrxAmountPerDay).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.Year)
+                .HasDefaultValue(0)
+                .HasColumnName("year");
+        });
+
+        modelBuilder.Entity<TrxLimitPerMonth>(entity =>
+        {
+            entity.ToTable("TrxLimitPerMonth");
+
+            entity.Property(e => e.LastTrxId).HasMaxLength(50);
+            entity.Property(e => e.TrxAmountPerMonth).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.TrxTypeId).HasMaxLength(50);
+            entity.Property(e => e.Year).HasColumnName("year");
+        });
+
+        OnModelCreatingPartial(modelBuilder);
+    }
+    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
+}

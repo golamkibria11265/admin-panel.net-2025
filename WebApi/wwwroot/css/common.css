@@ -1,0 +1,7 @@
+﻿.breadcrumb-item-custom::after {
+    content: ' | ';
+    white-space: pre;
+}
+.breadcrumb-item-custom:last-child::after {
+    content: '';
+}

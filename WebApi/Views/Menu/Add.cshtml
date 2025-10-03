@@ -1,0 +1,128 @@
+﻿@model Dll.Models.ViewModels.MenuViewModel
+@{
+    Layout = null;
+}
+<div class="row">
+    <div class="col-md-12">
+        <form asp-action="AddOrEdit" asp-route-id="@Model.Id" onsubmit="return jQueryAjaxPost(this);">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <input type="hidden" asp-for="Id" />
+            @Html.AntiForgeryToken()
+            <div class="row">
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label asp-for="Name" class="form-label required"></label>
+                        <div class="input-group">
+                            <input asp-for="Name" class="form-control" required />
+                        </div>
+                        <span asp-validation-for="Name" class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label asp-for="Url" class="form-label"></label>
+                        <div class="input-group">
+                            <input asp-for="Url" class="form-control" />
+                        </div>
+                        <span asp-validation-for="Url" class="text-danger"></span>
+                    </div>
+                </div>
+                @if (Model.Parent > 0)
+                {
+                    <div class="col-sm-6 d-none">
+                        <div class="form-group">
+                            <label asp-for="Parent" class="form-label"></label>
+                            <div class="input-group">
+                                <input asp-for="Parent" class="form-control" readonly />
+                            </div>
+                            <span asp-validation-for="Parent" class="text-danger"></span>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="form-group">
+                            <label asp-for="ParentName" class="form-label"></label>
+                            <div class="input-group">
+                                <input asp-for="ParentName" class="form-control" readonly />
+                            </div>
+                            <span asp-validation-for="ParentName" class="text-danger"></span>
+                        </div>
+                    </div>
+                }
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label asp-for="MenuOrder" class="form-label"></label>
+                        <div class="input-group">
+                            <input asp-for="MenuOrder" class="form-control" type="number" />
+                        </div>
+                        <span asp-validation-for="MenuOrder" class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label asp-for="Image" class="form-label"></label>
+                        <div class="input-group">
+                            <input asp-for="Image" class="form-control" id="imageInput" onchange="previewImage(event)" />
+                        </div>
+                        <span asp-validation-for="Image" class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label asp-for="ImageUrl" class="form-label"></label>
+                        <div id="imagePreview">
+                            @if (!string.IsNullOrEmpty(Model.ImageUrl))
+                            {
+                                <img src="@Model.ImageUrl" alt="Uploaded Image" class="img-thumbnail" style="max-width: 15%;" />
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="form-group">
+                        <label asp-for="IsAction" class="form-label"></label>
+                        <div class="input-group">
+                            <input asp-for="IsAction" class="form-check-input" type="checkbox" />
+                        </div>
+                        <span asp-validation-for="IsAction" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="d-flex justify-content-end mt-2">
+                    <input type="submit" value="Submit" class="btn btn-primary btn-block" />
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    function previewImage(event) {
+        var input = event.target;
+        var reader = new FileReader();
+        reader.onload = function () {
+            var imgElement = document.createElement('img');
+            imgElement.src = reader.result;
+            imgElement.className = "img-thumbnail";
+            imgElement.style.maxWidth = "15%";
+            var previewDiv = document.getElementById('imagePreview');
+            previewDiv.innerHTML = '';
+            previewDiv.appendChild(imgElement);
+        };
+        if (input.files.length > 0) {
+            reader.readAsDataURL(input.files[0]);
+        }
+        else {
+            var previewDiv = document.getElementById('imagePreview');
+            previewDiv.innerHTML = '';
+            var imgElement = document.createElement('img');
+            imgElement.src = "@Model.ImageUrl";
+            imgElement.alt = "Uploaded Image";
+            imgElement.className = "img-thumbnail";
+            imgElement.style.maxWidth = "15%";
+            previewDiv.appendChild(imgElement);
+        }
+    }
+</script>
+@section Scripts {
+    <script src="~/js/CustomScripts/menu.js"></script>
+}

@@ -1,0 +1,127 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Dashboard - Tabler - Premium and Open Source dashboard template with responsive and high quality UI.</title>
+    <!-- CSS files -->
+    <link href="~/custom/dist/css/tabler.min.css?1684106062" rel="stylesheet" />
+    <link href="~/custom/dist/css/tabler-flags.min.css?1684106062" rel="stylesheet" />
+    <link href="~/custom/dist/css/tabler-payments.min.css?1684106062" rel="stylesheet" />
+    <link href="~/custom/dist/css/tabler-vendors.min.css?1684106062" rel="stylesheet" />
+    <link href="~/custom/dist/css/demo.min.css?1684106062" rel="stylesheet" />
+    <link href="~/custom/dist/css/inter.css" />
+    <link rel="stylesheet" href="~/custom/css/fontawesome-free/css/all.min.css" />
+    <link rel="stylesheet" href="~/custom/css/dataTables.bootstrap5.min.css" />
+    <link rel="stylesheet" href="~/custom/css/responsive.bootstrap5.min.css" />
+    <link rel="stylesheet" href="~/css/loader.css">
+    <link rel="stylesheet" href="~/css/common.css">
+    <link rel="stylesheet" href="~/AdminLTE/plugins/toastr/toastr.min.css">
+    <link href="~/css/tom-select.css" rel="stylesheet" />
+    <style>
+        :root {
+            --tblr-font-sans-serif: 'Inter Var', -apple-system, BlinkMacSystemFont, San Francisco, Segoe UI, Roboto, Helvetica Neue, sans-serif;
+        }
+        body {
+            font-feature-settings: "cv03", "cv04", "cv11";
+        }
+    </style>
+</head>
+<body>
+    <script src="~/custom/dist/js/demo-theme.min.js?1684106062"></script>
+    <div class="page">
+        <div class="loader" id="AjaxLoader" style="display:none;">
+            <div class="strip-holder">
+                <div class="strip-1"></div>
+                <div class="strip-2"></div>
+                <div class="strip-3"></div>
+            </div>
+        </div>
+        @(await Html.PartialAsync("_Sidebar"))
+        @(await Html.PartialAsync("_Navbar"))
+        <div class="page-wrapper">
+            <div class="modal modal-blur" id="form-modal" tabindex="-1" role="dialog" aria-hidden="true">
+                <div class="modal-dialog modal-lg" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title"></h5>
+                            <button type="button" class="btn-close" onclick="closeModal('form-modal')" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Page body -->
+            <div class="page-body">
+                <div class="container-xl">
+                    <div class="row row-deck row-cards">
+                        @RenderBody()
+                    </div>
+                </div>
+            </div>
+@*             @(await Html.PartialAsync("_Footer")) *@
+        </div>
+    </div>
+    <!-- Libs JS -->
+    <script type="text/javascript" src="~/lib/jquery/jquery.min.js"></script>
+    <script src="~/AdminLTE/plugins/moment/moment.min.js"></script>
+    <script src="~/AdminLTE/plugins/daterangepicker/daterangepicker.js"></script>
+    <script src="~/custom/js/jquery.dataTables.min.js"></script>
+    <script src="~/custom/js/dataTables.bootstrap5.min.js"></script>
+    <script src="~/custom/js/dataTables.responsive.min.js"></script>
+    <script src="~/custom/js/responsive.bootstrap5.min.js"></script>
+    <script src="~/AdminLTE/plugins/toastr/toastr.min.js"></script>
+    <script src="~/custom/dist/libs/litepicker/dist/litepicker.js"></script>
+
+    <script src="~/AdminLTE/plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script src="~/AdminLTE/plugins/datatables-responsive/js/dataTables.responsive.min.js"></script>
+    <script src="~/AdminLTE/plugins/datatables-responsive/js/responsive.bootstrap4.min.js"></script>
+    <script src="~/AdminLTE/plugins/datatables-buttons/js/dataTables.buttons.min.js"></script>
+    <script src="~/AdminLTE/plugins/datatables-buttons/js/buttons.bootstrap4.min.js"></script>
+    <script src="~/AdminLTE/plugins/jszip/jszip.min.js"></script>
+    <script src="~/AdminLTE/plugins/pdfmake/pdfmake.min.js"></script>
+    <script src="~/AdminLTE/plugins/pdfmake/vfs_fonts.js"></script>
+    <script src="~/AdminLTE/plugins/datatables-buttons/js/buttons.html5.min.js"></script>
+    <script src="~/AdminLTE/plugins/datatables-buttons/js/buttons.print.min.js"></script>
+    <script src="~/AdminLTE/plugins/datatables-buttons/js/buttons.colVis.min.js"></script>
+    <!-- Tabler Core -->
+    <script src="~/custom/dist/js/tabler.min.js" defer></script>
+    <script src="~/custom/dist/js/demo.min.js"></script>
+    <script src="~/js/CustomScripts/CommonDropdown.js"></script>
+    <script src="~/js/sweetalert2.all.min.js"></script>
+    <script src="~/js/tom-select.complete.min.js"></script>
+    <script>
+        $(document).ajaxStart(function () {
+            $('#AjaxLoader').show();
+        }).ajaxStop(function () {
+            $('#AjaxLoader').hide();
+        });
+        function closeModal(e) {
+            $('#' + e).hide();
+        }
+
+        $('.btnLogout').click(function () {
+            $(this).closest('form')[0].submit();
+        });
+        function checkSession() {
+            $.ajax({
+                url: '@Url.Action("CheckSession", "User")',
+                type: 'GET',
+                success: function (res) {
+                    if (res.sessionExpired) {
+                        $.post('@Url.Action("Logout", "User")', function () {
+                            window.location.href = '@Url.Action("Login", "User")';
+                        });
+                    }
+                },
+                error: function (err) {
+                    console.error('Error checking session status', err);
+                }
+            });
+        }
+        setInterval(checkSession, 120000);
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

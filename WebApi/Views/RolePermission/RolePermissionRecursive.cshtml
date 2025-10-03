@@ -1,0 +1,16 @@
+﻿@model Dll.Models.ViewModels.RolePermissionViewModel
+
+<a>@Html.DisplayFor(modelItem => Model.Name)</a>
+
+@if (Model.ChildRolePermissionViewModels != null && Model.ChildRolePermissionViewModels.Any())
+{
+    <ul>
+        @foreach (var child in Model.ChildRolePermissionViewModels)
+        {
+            <li>
+                <input asp-for="IsSelected" class="form-check-input" type="checkbox" />
+                @await Html.PartialAsync("RolePermissionRecursive", child)
+            </li>
+        }
+    </ul>
+}
