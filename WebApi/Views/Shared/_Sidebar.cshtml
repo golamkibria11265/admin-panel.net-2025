@@ -146,88 +146,90 @@
                 </div>
             </div>
         </div>
-
-@*-------------------------------------------------------------------Menu-------------------------------------------------------------------- *@
-
         <div class="collapse navbar-collapse" id="sidebar-menu">
             <ul class="navbar-nav pt-lg-3">
                 @if (roleWiseScreenPermissions != null && roleWiseScreenPermissions.Count > 0)
                 {
-                    foreach (var item in roleWiseScreenPermissions)
+                    foreach (var level1 in roleWiseScreenPermissions)
                     {
-                        var parentActiveClass = string.Empty;
-                        var childActiveClass = string.Empty;
-                        var openListItemClass = string.Empty;
-                        if (item.ControllerName?.ToLower() == controller.ToString().ToLower())
+                        var level1Active = level1.ControllerName?.ToLower() == controller.ToLower() ? "active" : "";
+                        var level1Show = level1Active == "active" ? "show" : "";
+                        if (level1.ChildMenuViewModels == null || level1.ChildMenuViewModels.Count == 0)
                         {
-                            parentActiveClass = "active";
-                            openListItemClass = "show";
-                        }
-                        else
-                        {
-                            if (item.ChildMenuViewModels != null)
-                            {
-                                foreach (var childMenuItemActive in item.ChildMenuViewModels)
-                                {
-                                    if (childMenuItemActive.ControllerName?.ToLower() == controller.ToString().ToLower())
-                                    {
-                                        parentActiveClass = "active";
-                                        openListItemClass = "show";
-                                        break;
-                                    }
-                                }
-                            }
-
-                        }
-                        if (item.ChildMenuViewModels != null && item.ChildMenuViewModels.Count == 0 && item.ActionName != "#")
-                        {
-                            <li class="nav-item @parentActiveClass">
-                                <a class="nav-link" href="@Url.Action(item.ActionName,item.ControllerName)">
-                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                        <!-- Download SVG icon from http://tabler-icons.io/i/home -->
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 12l-2 0l9 -9l9 9l-2 0" /><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7" /><path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6" /></svg>
-                                    </span>
-                                    <span class="nav-link-title">
-                                        @item.Name
-                                    </span>
+                            <li class="nav-item @level1Active">
+                                <a class="nav-link" href="@Url.Action(level1.ActionName, level1.ControllerName)">
+                                    <span class="nav-link-title">@level1.Name</span>
                                 </a>
                             </li>
                         }
                         else
                         {
-                            <li class="nav-item @parentActiveClass dropdown">
-                                <a class="nav-link dropdown-toggle" href="#navbar-layout" data-bs-toggle="dropdown" data-bs-auto-close="false" role="button" aria-expanded="true">
-                                    <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                        <!-- Download SVG icon from http://tabler-icons.io/i/layout-2 -->
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M4 4m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v1a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z" /><path d="M4 13m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z" /><path d="M14 4m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z" /><path d="M14 15m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v1a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z" /></svg>
-                                    </span>
-                                    <span class="nav-link-title">
-                                        @item.Name
-                                    </span>
+                            <li class="nav-item dropdown @level1Active">
+                                <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-auto-close="false">
+                                    <span class="nav-link-title">@level1.Name</span>
                                 </a>
-                                @if (item.ChildMenuViewModels != null && item.ChildMenuViewModels.Count > 0)
-                                {
-                                    <div class="dropdown-menu @openListItemClass">
-                                        <div class="dropdown-menu-columns">
-                                            <div class="dropdown-menu-column">
-                                                @foreach (var childItem in item.ChildMenuViewModels)
+                                <div class="dropdown-menu @level1Show">
+                                    <div class="dropdown-menu-columns">
+                                        <div class="dropdown-menu-column">
+                                            @foreach (var level2 in level1.ChildMenuViewModels)
+                                            {
+                                                var level2Active = level2.ControllerName?.ToLower() == controller.ToLower() ? "active" : "";
+                                                var level2Show = level2Active == "active" ? "show" : "";
+
+                                                if (level2.ChildMenuViewModels == null || level2.ChildMenuViewModels.Count == 0)
                                                 {
-                                                    if (childItem.ControllerName?.ToLower() == controller.ToString().ToLower() && childItem.ActionName?.ToLower() == action?.ToString().ToLower())
-                                                    {
-                                                        childActiveClass = "active";
-                                                    }
-                                                    else
-                                                    {
-                                                        childActiveClass = string.Empty;
-                                                    }
-                                                    <a class="dropdown-item @childActiveClass" href="@Url.Action(childItem.ActionName,childItem.ControllerName)">
-                                                        @childItem.Name
+                                                    <a class="dropdown-item @level2Active" href="@Url.Action(level2.ActionName, level2.ControllerName)">
+                                                        @level2.Name
                                                     </a>
                                                 }
-                                            </div>
+                                                else
+                                                {
+                                                    <div class="dropdown dropdown-submenu @level2Active">
+                                                        <a class="dropdown-item dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-auto-close="false">
+                                                            @level2.Name
+                                                        </a>
+                                                        <div class="dropdown-menu @level2Show" style="padding-left:15px;">
+                                                            @foreach (var level3 in level2.ChildMenuViewModels)
+                                                            {
+                                                                var level3Active = level3.ControllerName?.ToLower() == controller.ToLower() ? "active" : "";
+                                                                var level3Show = level3Active == "active" ? "show" : "";
+
+                                                                if (level3.ChildMenuViewModels == null || level3.ChildMenuViewModels.Count == 0)
+                                                                {
+                                                                    <a class="dropdown-item @level3Active" href="@Url.Action(level3.ActionName, level3.ControllerName)">
+                                                                        @level3.Name
+                                                                    </a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <div class="dropdown dropdown-submenu @level3Active">
+                                                                        <a class="dropdown-item dropdown-toggle" href="#" data-bs-toggle="dropdown" data-bs-auto-close="false">
+                                                                            @level3.Name
+                                                                        </a>
+                                                                        <div class="dropdown-menu @level3Show" style="padding-left:30px;">
+                                                                            @foreach (var level4 in level3.ChildMenuViewModels)
+                                                                            {
+                                                                                var level4Active = level4.ControllerName?.ToLower() == controller.ToLower() ? "active" : "";
+                                                                                var level4Show = level4Active == "active" ? "show" : "";
+
+                                                                                if (level4.ChildMenuViewModels == null || level4.ChildMenuViewModels.Count == 0)
+                                                                                {
+                                                                                    <a class="dropdown-item @level4Active" href="@Url.Action(level4.ActionName, level4.ControllerName)">
+                                                                                        @level4.Name
+                                                                                    </a>
+                                                                                }
+                                                                            }
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                }
+                                            }
                                         </div>
                                     </div>
-                                }
+                                </div>
                             </li>
                         }
                     }
