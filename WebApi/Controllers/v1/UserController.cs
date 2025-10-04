@@ -170,7 +170,6 @@ namespace WebApi.Controllers.v1
                 return Json(actionResponse);
             }
         }
-
         [HttpPost]
         public IActionResult Logout()
         {
