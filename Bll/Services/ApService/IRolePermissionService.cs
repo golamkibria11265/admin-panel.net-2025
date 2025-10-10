@@ -124,6 +124,12 @@ namespace Bll.Services.ApService
                 return apiResponse;
             }
             var flatRolePermissionViewList = GetFlat(rolePermissionNestedViewModel.RolePermissionNestedViewModelList);
+            if (!flatRolePermissionViewList.Any())
+            {
+                apiResponse.code = StatusCodes.Status204NoContent;
+                apiResponse.messages = new List<string> { "No content is selected" };
+                return apiResponse;
+            }
             var rolePermissionListFromUi = flatRolePermissionViewList.Select(x => new ApRolePermission
             {
                 Id = x.Id,
@@ -131,6 +137,12 @@ namespace Bll.Services.ApService
                 PermissionId = x.PermissionId
             });
             var rolePermissionListFromDb = await _unitOfWork.RolePermissionRepository.FindByCondition(x => x.RoleId == rolePermissionNestedViewModel.RoleId);
+            if(!rolePermissionListFromDb.Any())
+            {
+                apiResponse.code = StatusCodes.Status204NoContent;
+                apiResponse.messages = new List<string> { "Invalid selected role" };
+                return apiResponse;
+            }
             var rolePermissionListToAdd = rolePermissionListFromUi.Where(x => !rolePermissionListFromDb.Any(y => y.RoleId == x.RoleId && y.PermissionId == x.PermissionId)).ToList();
             var rolePermissionListToDelete = rolePermissionListFromDb.Where(x => !rolePermissionListFromUi.Any(y => y.RoleId == x.RoleId && y.PermissionId == x.PermissionId)).ToList();
             if (rolePermissionListToAdd.Any()) await _unitOfWork.RolePermissionRepository.CreateRange(rolePermissionListToAdd);
@@ -140,6 +152,7 @@ namespace Bll.Services.ApService
             apiResponse.messages = new List<string> { "Successful" };
             return apiResponse;
         }
+
         private static List<RolePermissionViewModel> GetFlat(List<RolePermissionViewModel> rolePermissionViewModelList)
         {
             var flatList = new List<RolePermissionViewModel>();

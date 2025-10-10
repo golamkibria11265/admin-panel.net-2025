@@ -53,9 +53,7 @@ namespace WebApi.Controllers.v1
             try
             {
                 ApiResponse apiResponse = await _iRolePermissionService.UpdateRolePermissionsByRoleId(rolePermissionNestedViewModel);
-                actionResponse.code = StatusCodes.Status200OK;
-                actionResponse.messages = new List<string> {"Successfully done"};
-                return Json(actionResponse);
+                return Json(apiResponse);
             }
             catch (Exception ex)
             {
