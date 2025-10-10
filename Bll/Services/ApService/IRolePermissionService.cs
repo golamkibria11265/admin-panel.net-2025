@@ -152,7 +152,16 @@ namespace Bll.Services.ApService
             apiResponse.messages = new List<string> { "Successful" };
             return apiResponse;
         }
-
+        public static bool IsPermissionsSelectedConsicutively(List<RolePermissionViewModel> rolePermissionViewModelList)
+        {
+            var response = false;
+            foreach (var item in rolePermissionViewModelList)
+            {
+                
+            }
+            response = true;
+            return response;
+        }
         private static List<RolePermissionViewModel> GetFlat(List<RolePermissionViewModel> rolePermissionViewModelList)
         {
             var flatList = new List<RolePermissionViewModel>();
