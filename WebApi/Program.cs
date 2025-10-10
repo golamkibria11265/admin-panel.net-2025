@@ -17,19 +17,21 @@ builder.Host.UseSerilog((hostContext, services, configuration) =>
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Error)
     .WriteTo.Console(outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
     .WriteTo.File(path: $"{logpath}.log", rollingInterval: RollingInterval.Hour, outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .WriteTo.Elasticsearch(new Serilog.Sinks.Elasticsearch.ElasticsearchSinkOptions(new Uri(builder.Configuration["ElasticConfiguration:Uri"]!))
-    {
-        IndexFormat = $"applogs-{Assembly.GetExecutingAssembly().GetName().Name?.ToLower().Replace(".", "-")}-{hostContext.HostingEnvironment.EnvironmentName.ToLower().Replace(".", "-")}-logs-{DateTime.UtcNow:yyyy-MM}",
-        AutoRegisterTemplate = true,
-        NumberOfShards = 2,
-        NumberOfReplicas = 1,
-        ModifyConnectionSettings = x =>
-        {
-            x.BasicAuthentication(builder.Configuration["ElasticConfiguration:UserName"]!, builder.Configuration["ElasticConfiguration:Password"]!);
-            x.ServerCertificateValidationCallback((sender, cert, chain, sslPolicyErrors) => true);
-            return x;
-        }
-    })
+    #region uncomment if elastic search is implemented
+    //.WriteTo.Elasticsearch(new Serilog.Sinks.Elasticsearch.ElasticsearchSinkOptions(new Uri(builder.Configuration["ElasticConfiguration:Uri"]!))
+    //{
+    //    IndexFormat = $"applogs-{Assembly.GetExecutingAssembly().GetName().Name?.ToLower().Replace(".", "-")}-{hostContext.HostingEnvironment.EnvironmentName.ToLower().Replace(".", "-")}-logs-{DateTime.UtcNow:yyyy-MM}",
+    //    AutoRegisterTemplate = true,
+    //    NumberOfShards = 2,
+    //    NumberOfReplicas = 1,
+    //    ModifyConnectionSettings = x =>
+    //    {
+    //        x.BasicAuthentication(builder.Configuration["ElasticConfiguration:UserName"]!, builder.Configuration["ElasticConfiguration:Password"]!);
+    //        x.ServerCertificateValidationCallback((sender, cert, chain, sslPolicyErrors) => true);
+    //        return x;
+    //    }
+    //})
+    #endregion
     .Enrich.WithProperty("Environment", hostContext.HostingEnvironment.EnvironmentName)
     .ReadFrom.Configuration(hostContext.Configuration);
 });
@@ -64,7 +66,6 @@ if (!app.Environment.IsDevelopment())
 //    seeder.SeedData();
 //}
 #endregion
-
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
