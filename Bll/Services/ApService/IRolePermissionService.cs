@@ -26,7 +26,6 @@ namespace Bll.Services.ApService
             _unitOfWork = unitOfWork;
             _logger = logger;
         }
-
         public async Task<ApiResponse> GetRolePermissionsByRoleId(int roleId)
         {
             ApiResponse apiResponse = new();
@@ -123,6 +122,12 @@ namespace Bll.Services.ApService
                 apiResponse.messages = new List<string> { "No permission is selected" };
                 return apiResponse;
             }
+            if (!IsPermissionSelectionValid(rolePermissionNestedViewModel.RolePermissionNestedViewModelList))
+            {
+                apiResponse.code = StatusCodes.Status400BadRequest;
+                apiResponse.messages = new List<string> { "Invalid permission selection" };
+                return apiResponse;
+            }
             var flatRolePermissionViewList = GetFlat(rolePermissionNestedViewModel.RolePermissionNestedViewModelList);
             if (!flatRolePermissionViewList.Any())
             {
@@ -152,15 +157,36 @@ namespace Bll.Services.ApService
             apiResponse.messages = new List<string> { "Successful" };
             return apiResponse;
         }
-        public static bool IsPermissionsSelectedConsicutively(List<RolePermissionViewModel> rolePermissionViewModelList)
+        public bool IsPermissionSelectionValid(List<RolePermissionViewModel> rolePermissionViewModelList)
         {
-            var response = false;
             foreach (var item in rolePermissionViewModelList)
             {
-                
+
+                if (!IsPermissionHierarchyValid(item, item.IsSelected))
+                {
+                    return false;
+                }
             }
-            response = true;
-            return response;
+            return true;
+        }
+        private bool IsPermissionHierarchyValid(RolePermissionViewModel current, bool parentSelected)
+        {
+            if (current.IsSelected && !parentSelected)
+            {
+                return false;
+            }
+            if (current.ChildRolePermissionViewModels != null && current.ChildRolePermissionViewModels.Any())
+            {
+                foreach (var child in current.ChildRolePermissionViewModels)
+                {
+                    bool isValid = IsPermissionHierarchyValid(child, current.IsSelected);
+                    if (!isValid)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
         private static List<RolePermissionViewModel> GetFlat(List<RolePermissionViewModel> rolePermissionViewModelList)
         {
@@ -187,6 +213,5 @@ namespace Bll.Services.ApService
             }
             return flatList;
         }
-
     }
 }
