@@ -14,11 +14,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Remove="wwwroot\js\customscripts\CommonDropdown.js" />
+    <Content Remove="wwwroot\js\customscripts\commondropdown.js" />
   </ItemGroup>
 
   <ItemGroup>
-    <_ContentIncludedByDefault Remove="wwwroot\js\customscripts\CommonDropdown.js" />
+    <_ContentIncludedByDefault Remove="wwwroot\js\customscripts\commondropdown.js" />
   </ItemGroup>
 
   <ItemGroup>
@@ -1237,7 +1237,7 @@
     <None Include="wwwroot\custom\static\tracks\fb4998c955d8eba049ffbfc7ab8523a4a4a1f7e9.jpg" />
     <None Include="wwwroot\custom\static\tracks\fe4ee21d30450829e5b172e806b3c1e14ca1e5f3.jpg" />
     <None Include="wwwroot\custom\static\tracks\ff2381a011d29cefb3804436ed29f60b4faa63d6.jpg" />
-    <None Include="wwwroot\js\customscripts\CommonDropdown.js" />
+    <None Include="wwwroot\js\customscripts\commondropdown.js" />
   </ItemGroup>
 
   <ItemGroup>

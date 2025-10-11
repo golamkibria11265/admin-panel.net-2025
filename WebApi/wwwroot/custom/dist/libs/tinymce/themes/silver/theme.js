@@ -14779,7 +14779,7 @@
 
     const updateMenuText = generate$6('update-menu-text');
     const updateMenuIcon = generate$6('update-menu-icon');
-    const renderCommonDropdown = (spec, prefix, sharedBackstage) => {
+    const rendercommondropdown = (spec, prefix, sharedBackstage) => {
       const editorOffCell = Cell(noop);
       const optMemDisplayText = spec.text.map(text => record(renderLabel$1(text, prefix, sharedBackstage.providers)));
       const optMemDisplayIcon = spec.icon.map(iconName => record(renderReplaceableIconFromPack(iconName, sharedBackstage.providers.icons)));
@@ -15030,7 +15030,7 @@
       const pField = FormField.parts.field({
         dom: {},
         factory: {
-          sketch: sketchSpec => renderCommonDropdown({
+          sketch: sketchSpec => rendercommondropdown({
             uid: sketchSpec.uid,
             text: initialItem.map(item => item.text),
             icon: Optional.none(),
@@ -15937,7 +15937,7 @@
       setIcon: icon => emitWith(component, updateMenuIcon, { icon })
     });
     const renderMenuButton = (spec, prefix, backstage, role, tabstopping = true) => {
-      return renderCommonDropdown({
+      return rendercommondropdown({
         text: spec.text,
         icon: spec.icon,
         tooltip: spec.tooltip,
@@ -21247,7 +21247,7 @@
         const comp = api.getComponent();
         spec.updateText(comp);
       });
-      return renderCommonDropdown({
+      return rendercommondropdown({
         text: spec.icon.isSome() ? Optional.none() : spec.text,
         icon: spec.icon,
         tooltip: Optional.from(spec.tooltip),
