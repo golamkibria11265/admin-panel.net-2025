@@ -2,6 +2,7 @@
 using Dll.Models.ViewModels;
 using Dll.UnitOfWorks;
 using Microsoft.AspNetCore.Http;
+using Newtonsoft.Json;
 using Utility;
 
 namespace Bll.Services.ApService
@@ -104,51 +105,63 @@ namespace Bll.Services.ApService
         public async Task<ApiResponse> UpdateRolePermissionsByRoleId(RolePermissionNestedViewModel rolePermissionNestedViewModel)
         {
             ApiResponse apiResponse = new();
-            if (rolePermissionNestedViewModel == null)
+            try
             {
-                apiResponse.code = StatusCodes.Status204NoContent;
-                apiResponse.messages = new List<string> { "No content is selected" };
+                if (rolePermissionNestedViewModel == null)
+                {
+                    apiResponse.code = StatusCodes.Status204NoContent;
+                    apiResponse.messages = new List<string> { "No content is selected" };
+                    return apiResponse;
+                }
+                if (rolePermissionNestedViewModel.RolePermissionNestedViewModelList == null)
+                {
+                    apiResponse.code = StatusCodes.Status204NoContent;
+                    apiResponse.messages = new List<string> { "No permission is selected" };
+                    return apiResponse;
+                }
+                if (!IsPermissionSelectionValid(rolePermissionNestedViewModel.RolePermissionNestedViewModelList))
+                {
+                    apiResponse.code = StatusCodes.Status400BadRequest;
+                    apiResponse.messages = new List<string> { "Invalid permission selection" };
+                    return apiResponse;
+                }
+                var flatRolePermissionViewList = GetFlat(rolePermissionNestedViewModel.RolePermissionNestedViewModelList);
+                if (!flatRolePermissionViewList.Any())
+                {
+                    apiResponse.code = StatusCodes.Status204NoContent;
+                    apiResponse.messages = new List<string> { "No content is selected" };
+                    return apiResponse;
+                }
+                var rolePermissionListFromUi = flatRolePermissionViewList.Select(x => new ApRolePermission
+                {
+                    RoleId = rolePermissionNestedViewModel.RoleId,
+                    PermissionId = x.PermissionId
+                });
+                var rolePermissionListFromDb = await _unitOfWork.RolePermissionRepository.FindByCondition(x => x.RoleId == rolePermissionNestedViewModel.RoleId);
+                if (!rolePermissionListFromDb.Any())
+                {
+                    apiResponse.code = StatusCodes.Status204NoContent;
+                    apiResponse.messages = new List<string> { "Invalid selected role" };
+                    return apiResponse;
+                }
+                var rolePermissionListToAdd = rolePermissionListFromUi.Where(x => !rolePermissionListFromDb.Any(y => y.RoleId == x.RoleId && y.PermissionId == x.PermissionId)).ToList();
+                var rolePermissionListToDelete = rolePermissionListFromDb.Where(x => !rolePermissionListFromUi.Any(y => y.RoleId == x.RoleId && y.PermissionId == x.PermissionId)).ToList();
+                if (rolePermissionListToAdd.Any()) await _unitOfWork.RolePermissionRepository.CreateRange(rolePermissionListToAdd);
+                if (rolePermissionListToDelete.Any()) await _unitOfWork.RolePermissionRepository.DeleteRange(rolePermissionListToDelete);
+                await _unitOfWork.CompleteAsync();
+                apiResponse.code = StatusCodes.Status200OK;
+                apiResponse.messages = new List<string> { "Successful" };
                 return apiResponse;
             }
-            if (rolePermissionNestedViewModel.RolePermissionNestedViewModelList == null)
+            catch (Exception ex)
             {
-                apiResponse.code = StatusCodes.Status204NoContent;
-                apiResponse.messages = new List<string> { "No permission is selected" };
+                _logger.Error("Error Message: {Message}", ex.Message);
+                _logger.Error("Stack Trace: {StackTrace}", JsonConvert.SerializeObject(ex.StackTrace));
+
+                apiResponse.code = StatusCodes.Status500InternalServerError;    
+                apiResponse.messages = new List<string> { "Something went wrong" };
                 return apiResponse;
             }
-            if (!IsPermissionSelectionValid(rolePermissionNestedViewModel.RolePermissionNestedViewModelList))
-            {
-                apiResponse.code = StatusCodes.Status400BadRequest;
-                apiResponse.messages = new List<string> { "Invalid permission selection" };
-                return apiResponse;
-            }
-            var flatRolePermissionViewList = GetFlat(rolePermissionNestedViewModel.RolePermissionNestedViewModelList);
-            if (!flatRolePermissionViewList.Any())
-            {
-                apiResponse.code = StatusCodes.Status204NoContent;
-                apiResponse.messages = new List<string> { "No content is selected" };
-                return apiResponse;
-            }
-            var rolePermissionListFromUi = flatRolePermissionViewList.Select(x => new ApRolePermission
-            {
-                RoleId = rolePermissionNestedViewModel.RoleId,
-                PermissionId = x.PermissionId
-            });
-            var rolePermissionListFromDb = await _unitOfWork.RolePermissionRepository.FindByCondition(x => x.RoleId == rolePermissionNestedViewModel.RoleId);
-            if(!rolePermissionListFromDb.Any())
-            {
-                apiResponse.code = StatusCodes.Status204NoContent;
-                apiResponse.messages = new List<string> { "Invalid selected role" };
-                return apiResponse;
-            }
-            var rolePermissionListToAdd = rolePermissionListFromUi.Where(x => !rolePermissionListFromDb.Any(y => y.RoleId == x.RoleId && y.PermissionId == x.PermissionId)).ToList();
-            var rolePermissionListToDelete = rolePermissionListFromDb.Where(x => !rolePermissionListFromUi.Any(y => y.RoleId == x.RoleId && y.PermissionId == x.PermissionId)).ToList();
-            if (rolePermissionListToAdd.Any()) await _unitOfWork.RolePermissionRepository.CreateRange(rolePermissionListToAdd);
-            if (rolePermissionListToDelete.Any()) await _unitOfWork.RolePermissionRepository.DeleteRange(rolePermissionListToDelete);
-            await _unitOfWork.CompleteAsync();
-            apiResponse.code = StatusCodes.Status200OK;
-            apiResponse.messages = new List<string> { "Successful" };
-            return apiResponse;
         }
         public bool IsPermissionSelectionValid(List<RolePermissionViewModel> rolePermissionViewModelList)
         {
