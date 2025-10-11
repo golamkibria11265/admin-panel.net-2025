@@ -2,12 +2,6 @@
 using Dll.Models.ViewModels;
 using Dll.UnitOfWorks;
 using Microsoft.AspNetCore.Http;
-using StackExchange.Redis;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Utility;
 
 namespace Bll.Services.ApService
@@ -137,7 +131,6 @@ namespace Bll.Services.ApService
             }
             var rolePermissionListFromUi = flatRolePermissionViewList.Select(x => new ApRolePermission
             {
-                Id = x.Id,
                 RoleId = rolePermissionNestedViewModel.RoleId,
                 PermissionId = x.PermissionId
             });
