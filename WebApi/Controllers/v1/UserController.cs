@@ -83,6 +83,8 @@ namespace WebApi.Controllers.v1
         [HttpPost]
         public async Task<ActionResult> Login(LogInViewModel login)
         {
+            _logger.Information("login attempt for user: ", login.userName);
+
             ActionResponse actionResponse = new();
             try
             {
@@ -160,6 +162,7 @@ namespace WebApi.Controllers.v1
                 actionResponse.code = StatusCodes.Status200OK;
                 actionResponse.messages = new List<string>() { "Successfully logged In" };
                 actionResponse.redirect_url = _iConfiguration.GetValue<string>("Urls:LoginRedirectUrl");
+
                 return Json(actionResponse);
             }
             catch(Exception ex)
