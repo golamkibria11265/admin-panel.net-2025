@@ -1,4 +1,4 @@
-﻿@model Dll.Models.ViewModels.RolePermissionNestedViewModel
+@model Dll.Models.ViewModels.RolePermissionNestedViewModel
 
 <form asp-action="UpdateRolePermissionsByRole" method="post" onsubmit="return jQueryAjaxPost(this);">
     <div class="col-12">
@@ -82,55 +82,55 @@
             });
         }
 
-        function createPermissionCard(permission, prefix) {
-            let card = $('<div class="col-sm-4" style="margin-top: 20px;">' +
-                '<div class="card">' +
-                '<div class="form-group">' +
-                `<input type="hidden" name="${prefix}.Id" value="${permission.id}">` +
-                `<input type="hidden" name="${prefix}.Name" value="${permission.name}">` +
-                `<input type="hidden" name="${prefix}.RoleId" value="${permission.roleId}">` +
-                `<input type="hidden" name="${prefix}.PermissionId" value="${permission.permissionId}">` +
-                `<input type="hidden" name="${prefix}.MenuId" value="${permission.menuId}">` +
-                `<input type="hidden" name="${prefix}.ParentId" value="${permission.parentId}">` +
-                `<input type="checkbox" class="form-check-input" name="${prefix}.IsSelected" id="${prefix}_IsSelected" value="true" ${permission.isSelected ? 'checked' : ''} data-id="${permission.id}">` +
-                `<a>${permission.name}</a>` +
-                '</div>' +
-                '<ul></ul>' +
-                '</div>' +
-                '</div>');
+        // Builds the permission tree with jQuery attr()/text() so menu names can never inject HTML or script.
+        function hiddenInput(name, value) {
+            return $('<input type="hidden">').attr('name', name).val(value === null || value === undefined ? '' : value);
+        }
 
-            let ul = card.find('ul');
-            permission.childRolePermissionViewModels.forEach((child, childIndex) => {
+        function permissionFields(permission, prefix) {
+            const group = $('<div class="form-group"></div>');
+            group.append(hiddenInput(`${prefix}.Id`, permission.id));
+            group.append(hiddenInput(`${prefix}.Name`, permission.name));
+            group.append(hiddenInput(`${prefix}.RoleId`, permission.roleId));
+            group.append(hiddenInput(`${prefix}.PermissionId`, permission.permissionId));
+            group.append(hiddenInput(`${prefix}.MenuId`, permission.menuId));
+            group.append(hiddenInput(`${prefix}.ParentId`, permission.parentId));
+            const checkbox = $('<input type="checkbox" class="form-check-input" value="true">')
+                .attr('name', `${prefix}.IsSelected`)
+                .attr('id', `${prefix}_IsSelected`)
+                .attr('data-id', permission.id)
+                .prop('checked', !!permission.isSelected);
+            group.append(checkbox);
+            group.append($('<a></a>').text(permission.name || ''));
+            return group;
+        }
+
+        function appendChildren(ul, permission, prefix) {
+            (permission.childRolePermissionViewModels || []).forEach((child, childIndex) => {
                 ul.append(createChildPermissionCard(child, `${prefix}.ChildRolePermissionViewModels[${childIndex}]`));
             });
+        }
 
+        function createPermissionCard(permission, prefix) {
+            const card = $('<div class="col-sm-4" style="margin-top: 20px;"><div class="card"></div></div>');
+            const inner = card.find('.card');
+            inner.append(permissionFields(permission, prefix));
+            const ul = $('<ul></ul>');
+            inner.append(ul);
+            appendChildren(ul, permission, prefix);
             return card;
         }
 
         function createChildPermissionCard(childPermission, prefix) {
-            let li = $('<li>' +
-                '<div class="form-group">' +
-                `<input type="hidden" name="${prefix}.Id" value="${childPermission.id}">` +
-                `<input type="hidden" name="${prefix}.Name" value="${childPermission.name}">` +
-                `<input type="hidden" name="${prefix}.RoleId" value="${childPermission.roleId}">` +
-                `<input type="hidden" name="${prefix}.PermissionId" value="${childPermission.permissionId}">` +
-                `<input type="hidden" name="${prefix}.MenuId" value="${childPermission.menuId}">` +
-                `<input type="hidden" name="${prefix}.ParentId" value="${childPermission.parentId}">` +
-                `<input type="checkbox" class="form-check-input" name="${prefix}.IsSelected" id="${prefix}_IsSelected" value="true" ${childPermission.isSelected ? 'checked' : ''} data-id="${childPermission.id}">` +
-                `<a>${childPermission.name}</a>` +
-                '</div>' +
-                '<ul></ul>' +
-                '</li>');
-
-            let ul = li.find('ul');
-            childPermission.childRolePermissionViewModels.forEach((grandChild, grandChildIndex) => {
-                ul.append(createChildPermissionCard(grandChild, `${prefix}.ChildRolePermissionViewModels[${grandChildIndex}]`)); // Recursively create nested permissions
-            });
-
+            const li = $('<li></li>');
+            li.append(permissionFields(childPermission, prefix));
+            const ul = $('<ul></ul>');
+            li.append(ul);
+            appendChildren(ul, childPermission, prefix); // recursive: any depth
             return li;
         }
     </script>
 
-    <script src="~/js/customscripts/rolepermission.js"></script>
-    <script src="~/js/customscripts/commondropdown.js"></script>
+    <script src="~/js/CustomScripts/rolepermission.js"></script>
+    <script src="~/js/CustomScripts/CommonDropdown.js"></script>
 }

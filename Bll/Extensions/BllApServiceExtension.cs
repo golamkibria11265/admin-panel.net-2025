@@ -1,4 +1,4 @@
-﻿using Bll.Services.ApService;
+using Bll.Services.ApService;
 using Bll.Services.CommonService;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +17,8 @@ namespace Bll.Extensions
             _iServiceCollection.AddScoped<IRoleService, RoleService>();
             _iServiceCollection.AddScoped<IUserRoleService, UserRoleService>();
             _iServiceCollection.AddScoped<ICommonService, CommonService>();
+            _iServiceCollection.AddScoped<IAccessControlService, AccessControlService>();
+            _iServiceCollection.AddSingleton<ILoginAttemptService, LoginAttemptService>();
             #endregion
             return _iServiceCollection;
         }   

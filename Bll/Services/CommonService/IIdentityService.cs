@@ -1,4 +1,4 @@
-﻿using Dll.UnitOfWorks;
+using Dll.UnitOfWorks;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
@@ -24,23 +24,27 @@ namespace Bll.Services.CommonService
         private readonly Serilog.ILogger _logger;
         private readonly IHttpClientFactory _iHttpClientFactory;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly string _identityBaseUrl;
         public IdentityService
         (
             IUnitOfWork unitOfWork,
             Serilog.ILogger logger,
             IHttpClientFactory iHttpClientFactory,
-            IHttpContextAccessor httpContextAccessor
+            IHttpContextAccessor httpContextAccessor,
+            Microsoft.Extensions.Configuration.IConfiguration configuration
         )
         {
             _unitOfWork = unitOfWork;
             _logger = logger;
             _iHttpClientFactory = iHttpClientFactory;
             _httpContextAccessor = httpContextAccessor;
+            // Configured per environment (IdentityService:BaseUrl) instead of a hard-coded localhost address.
+            _identityBaseUrl = (configuration["IdentityService:BaseUrl"] ?? string.Empty).TrimEnd('/');
         }
         public async Task<CommonResponse> GetAspNetUser()
         {
             CommonResponse commonResponse = new();
-            string uri = "https://localhost:8090/api/account/getAspNetUserInfo";
+            string uri = string.IsNullOrEmpty(_identityBaseUrl) ? string.Empty : _identityBaseUrl + "/api/account/getAspNetUserInfo";
             if (string.IsNullOrWhiteSpace(uri))
             {
                 throw new CustomApplicationException("uri is not found");
@@ -72,7 +76,7 @@ namespace Bll.Services.CommonService
                 response = await client.SendAsync(httpRequestMessage);
                 responseBody = await response.Content.ReadAsStringAsync();
             }
-            catch (TimeoutException)
+            catch (TaskCanceledException)
             {
                 commonResponse.code = StatusCodes.Status408RequestTimeout;
                 commonResponse.messages = new List<string> { "request timed out. please try again later." };
@@ -81,7 +85,8 @@ namespace Bll.Services.CommonService
             catch (Exception ex)
             {
                 commonResponse.code = StatusCodes.Status500InternalServerError;
-                commonResponse.messages = new List<string> { $"something went wrong: {ex.Message}" };
+                _logger.Error(ex, "Identity service call failed");
+                commonResponse.messages = new List<string> { "something went wrong. please try again later." };
                 return commonResponse;
             }
             if (!response.IsSuccessStatusCode)
@@ -159,7 +164,7 @@ namespace Bll.Services.CommonService
                 commonResponse.messages = new List<string> { "mobile number is required" };
                 return commonResponse;
             }
-            string uri = "https://localhost:8090/api/account/getAspNetUserInfoByMobile";
+            string uri = string.IsNullOrEmpty(_identityBaseUrl) ? string.Empty : _identityBaseUrl + "/api/account/getAspNetUserInfoByMobile";
             if (string.IsNullOrWhiteSpace(uri))
             {
                 throw new CustomApplicationException("uri is not found");
@@ -198,7 +203,7 @@ namespace Bll.Services.CommonService
                 response = await client.SendAsync(httpRequestMessage);
                 responseBody = await response.Content.ReadAsStringAsync();
             }
-            catch (TimeoutException)
+            catch (TaskCanceledException)
             {
                 commonResponse.code = StatusCodes.Status408RequestTimeout;
                 commonResponse.messages = new List<string> { "request timed out. please try again later." };
@@ -207,7 +212,8 @@ namespace Bll.Services.CommonService
             catch (Exception ex)
             {
                 commonResponse.code = StatusCodes.Status500InternalServerError;
-                commonResponse.messages = new List<string> { $"something went wrong: {ex.Message}" };
+                _logger.Error(ex, "Identity service call failed");
+                commonResponse.messages = new List<string> { "something went wrong. please try again later." };
                 return commonResponse;
             }
             if (!response.IsSuccessStatusCode)
@@ -274,7 +280,7 @@ namespace Bll.Services.CommonService
                 commonResponse.messages = new List<string> { "mobile number is required" };
                 return commonResponse;
             }
-            string uri = "https://localhost:8090/api/account/getAspNetUserInfoByMobile";
+            string uri = string.IsNullOrEmpty(_identityBaseUrl) ? string.Empty : _identityBaseUrl + "/api/account/getAspNetUserInfoByMobile";
             if (string.IsNullOrWhiteSpace(uri))
             {
                 throw new CustomApplicationException("uri is not found");
@@ -314,7 +320,7 @@ namespace Bll.Services.CommonService
                 commonResponse.messages = new List<string> { "request was cancelled" };
                 return commonResponse;
             }
-            catch (TimeoutException)
+            catch (TaskCanceledException)
             {
                 commonResponse.code = StatusCodes.Status408RequestTimeout;
                 commonResponse.messages = new List<string> { "request timed out. please try again later." };
@@ -323,7 +329,8 @@ namespace Bll.Services.CommonService
             catch (Exception ex)
             {
                 commonResponse.code = StatusCodes.Status500InternalServerError;
-                commonResponse.messages = new List<string> { $"something went wrong: {ex.Message}" };
+                _logger.Error(ex, "Identity service call failed");
+                commonResponse.messages = new List<string> { "something went wrong. please try again later." };
                 return commonResponse;
             }
             if (!response.IsSuccessStatusCode)

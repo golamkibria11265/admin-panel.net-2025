@@ -1,4 +1,4 @@
-﻿@model Dll.Models.ViewModels.MenuViewModel
+@model Dll.Models.ViewModels.MenuViewModel
 @{
     Layout = null;
 }
@@ -7,7 +7,7 @@
         <form asp-action="AddOrEdit" asp-route-id="@Model.Id" onsubmit="return jQueryAjaxPost(this);">
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
             <input type="hidden" asp-for="Id" />
-            @Html.AntiForgeryToken()
+            @* anti-forgery token is added automatically by the form tag helper *@
             <div class="row">
                 <div class="col-sm-6">
                     <div class="form-group">
@@ -124,5 +124,5 @@
     }
 </script>
 @section Scripts {
-    <script src="~/js/customscripts/menu.js"></script>
+    <script src="~/js/CustomScripts/menu.js"></script>
 }

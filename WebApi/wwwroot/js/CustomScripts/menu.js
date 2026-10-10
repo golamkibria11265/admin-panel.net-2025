@@ -4,9 +4,18 @@ showInPopup = (url, title) => {
         type: 'GET',
         url: url,
         success: function (res) {
+            // JSON instead of HTML means "session expired" or "access denied".
+            if (res && typeof res === 'object') {
+                if (res.session_expired) { window.location.href = res.redirect_url; return; }
+                (res.messages || ['Failed']).forEach(m => toastr.error(m));
+                return;
+            }
             $('#form-modal .modal-body').html(res);
             $('#form-modal .modal-title').html(title);
             $('#form-modal').show();
+        },
+        error: function (err) {
+            errorResponse(err);
         }
     })
 }
@@ -26,7 +35,7 @@ jQueryAjaxPost = form => {
                     $('#form-modal .modal-body').html('');
                     $('#form-modal .modal-title').html('');
                     $('#form-modal').hide();
-                    $('#menu_table').DataTable().ajax.reload();
+                    if ($.fn.DataTable && $.fn.DataTable.isDataTable('#menu_table')) { $('#menu_table').DataTable().ajax.reload(); }
                 }
                 else
                 {
@@ -60,18 +69,18 @@ jQueryAjaxDelete = (url, id) => {
             $.ajax({
                 type: 'POST',
                 url: url,
+                // Sent as normal form data so the server can bind "id"
+                // (contentType:false + processData:false sent "[object Object]").
                 data: { id: id },
-                contentType: false,
-                processData: false,
                 success: function (res) {
                     if (res.hasOwnProperty('code') && res.code == 200) {
                         res.messages.forEach(element => {
-                            toastr.error(element);
+                            toastr.success(element);
                         });
                         $('#form-modal .modal-body').html('');
                         $('#form-modal .modal-title').html('');
                         $('#form-modal').modal('hide');
-                        $('#menu_table').DataTable().ajax.reload();
+                        if ($.fn.DataTable && $.fn.DataTable.isDataTable('#menu_table')) { $('#menu_table').DataTable().ajax.reload(); }
                     }
                     else
                     {

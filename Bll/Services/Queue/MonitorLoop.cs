@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -18,8 +18,15 @@ namespace Bll.Services.Queue
             Task.Run(async () => await MonitorAsync());
         }
 
+        // Demo code (Microsoft sample): reads keys from an interactive console. It is not registered in DI;
+        // inside a container/service there is no console, so it exits instead of throwing.
         private async ValueTask MonitorAsync()
         {
+            if (Console.IsInputRedirected || !Environment.UserInteractive)
+            {
+                logger.LogInformation("{Name} disabled: no interactive console.", nameof(MonitorLoop));
+                return;
+            }
             while (!_cancellationToken.IsCancellationRequested)
             {
                 var keyStroke = Console.ReadKey();

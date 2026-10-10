@@ -4,9 +4,18 @@ showInPopup = (url, title) => {
         type: 'GET',
         url: url,
         success: function (res) {
+            // JSON instead of HTML means "session expired" or "access denied".
+            if (res && typeof res === 'object') {
+                if (res.session_expired) { window.location.href = res.redirect_url; return; }
+                (res.messages || ['Failed']).forEach(m => toastr.error(m));
+                return;
+            }
             $('#form-modal .modal-body').html(res);
             $('#form-modal .modal-title').html(title);
             $('#form-modal').show();
+        },
+        error: function (err) {
+            errorResponse(err);
         }
     })
 }
@@ -26,7 +35,7 @@ jQueryAjaxPost = form => {
                     $('#form-modal .modal-body').html('');
                     $('#form-modal .modal-title').html('');
                     $('#form-modal').hide();
-                    $('#menu_table').DataTable().ajax.reload();
+                    if ($.fn.DataTable && $.fn.DataTable.isDataTable('#menu_table')) { $('#menu_table').DataTable().ajax.reload(); }
                 }
                 else
                 {
@@ -71,7 +80,7 @@ jQueryAjaxDelete = (url, id) => {
                         $('#form-modal .modal-body').html('');
                         $('#form-modal .modal-title').html('');
                         $('#form-modal').modal('hide');
-                        $('#menu_table').DataTable().ajax.reload();
+                        if ($.fn.DataTable && $.fn.DataTable.isDataTable('#menu_table')) { $('#menu_table').DataTable().ajax.reload(); }
                     }
                     else
                     {

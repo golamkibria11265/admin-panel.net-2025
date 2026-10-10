@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using WebApi.Filters;
@@ -5,6 +6,7 @@ using WebApi.Models;
 
 namespace WebApi.Controllers.v1
 {
+    // Sign-in is enforced globally by CheckSessionWithRedirect (see Program.cs).
     public class HomeController : Controller
     {
         private readonly ILogger<HomeController> _logger;
@@ -13,18 +15,25 @@ namespace WebApi.Controllers.v1
         {
             _logger = logger;
         }
-        [TypeFilter(typeof(CheckSessionWithRedirect), Order = 1)]
+
         public IActionResult Index()
         {
             return View();
         }
-        [TypeFilter(typeof(CheckSessionWithRedirect), Order = 1)]
-        [TypeFilter(typeof(HasPermission), Order = 2)]
+
+        [HasPermission]
         public IActionResult Privacy()
         {
             return View();
         }
 
+        public IActionResult AccessDenied()
+        {
+            Response.StatusCode = StatusCodes.Status403Forbidden;
+            return View();
+        }
+
+        [AllowAnonymous]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()
         {

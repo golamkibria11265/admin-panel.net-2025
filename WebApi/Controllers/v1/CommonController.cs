@@ -1,10 +1,13 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Utility.Models.ResponseModels;
-using Utility;
 using Bll.Services.CommonService;
+using Microsoft.AspNetCore.Mvc;
+using Utility;
+using Utility.Models.ResponseModels;
+using WebApi.Extensions;
+using WebApi.Filters;
 
 namespace WebApi.Controllers.v1
 {
+    // Sign-in is enforced globally by CheckSessionWithRedirect (see Program.cs).
     public class CommonController : Controller
     {
         private readonly ICommonService _iCommonService;
@@ -14,26 +17,21 @@ namespace WebApi.Controllers.v1
             _iCommonService = iCommonService;
             _logger = logger;
         }
-        public IActionResult Index()
-        {
-            return View();
-        }
+
+        [HasPermission("RolePermission/Index")]
         public async Task<IActionResult> GetRoleList()
         {
             ActionResponse actionResponse = new();
             try
             {
                 ApiResponse apiResponse = await _iCommonService.GetRoleList();
-                actionResponse.code = StatusCodes.Status200OK;
-                actionResponse.messages = apiResponse.messages;
-                actionResponse.data = apiResponse.data;
-                return Json(actionResponse.data);
+                return Json(apiResponse.data);
             }
             catch (Exception ex)
             {
                 actionResponse.code = StatusCodes.Status417ExpectationFailed;
-                actionResponse.messages = new List<string>() { ex.Message };
-                _logger.Error(ex, "Error in CommonControllerController/RoleList");
+                actionResponse.messages = SafeErrorMessage.For(ex);
+                _logger.Error(ex, "Error in CommonController/GetRoleList");
                 return Json(actionResponse);
             }
         }

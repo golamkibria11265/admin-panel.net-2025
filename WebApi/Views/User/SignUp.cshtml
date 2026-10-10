@@ -1,4 +1,4 @@
-﻿@model Dll.Models.ViewModels.SignUpViewModel
+@model Dll.Models.ViewModels.SignUpViewModel
 @{
     ViewData["Title"] = "SignUp";
     Layout = null;
@@ -86,7 +86,7 @@
 @*                         </div> *@
                     </form>
                     <div class="text-center text-muted mt-3">
-                        Already have account? <a href="https://localhost:7018/user/Login" tabindex="-1">Sign in</a>
+                        <a href="@Url.Action("Index", "Home")" tabindex="-1">Back to dashboard</a>
                     </div>
                 </div>
             </div>
@@ -94,9 +94,10 @@
     </div>
   </body>
 </html>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="~/lib/jquery/jquery.min.js"></script>
 <script src="~/AdminLTE/plugins/toastr/toastr.min.js"></script>
-<script src="~/js/customscripts/signup.js"></script>
+<script src="~/js/CustomScripts/security.js" asp-append-version="true"></script>
+<script src="~/js/CustomScripts/signup.js" asp-append-version="true"></script>
 <script>
     $(document).ajaxStart(function () {
         $('#AjaxLoader').show();

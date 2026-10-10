@@ -1,4 +1,4 @@
-﻿using Dll.Data;
+using Dll.Data;
 using Dll.UnitOfWorks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -10,9 +10,16 @@ namespace Dll.Extensions
     {
         public static IServiceCollection AddDataLogicLayerServices(this IServiceCollection _iServiceCollection, IConfiguration _iConfiguration)
         {
+            string? connectionString = _iConfiguration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "ConnectionStrings:DefaultConnection is not configured. Set the environment variable " +
+                    "ConnectionStrings__DefaultConnection (never put the password in appsettings.json).");
+            }
             _iServiceCollection.AddDbContext<DotNetContext>(options =>
             {
-                options.UseSqlServer(_iConfiguration.GetConnectionString("DefaultConnection"));
+                options.UseSqlServer(connectionString);
             });
 
             #region Repository Injection

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -30,6 +30,8 @@
 </head>
 <body>
     <script src="~/custom/dist/js/demo-theme.min.js?1684106062"></script>
+    @* Anti-forgery token read by security.js and sent with every AJAX POST *@
+    @Html.AntiForgeryToken()
     <div class="page">
         <div class="loader" id="AjaxLoader" style="display:none;">
             <div class="strip-holder">
@@ -88,7 +90,8 @@
     <!-- Tabler Core -->
     <script src="~/custom/dist/js/tabler.min.js" defer></script>
     <script src="~/custom/dist/js/demo.min.js"></script>
-    <script src="~/js/customscripts/commondropdown.js"></script>
+    <script src="~/js/CustomScripts/security.js" asp-append-version="true"></script>
+    <script src="~/js/CustomScripts/CommonDropdown.js" asp-append-version="true"></script>
     <script src="~/js/sweetalert2.all.min.js"></script>
     <script src="~/js/tom-select.complete.min.js"></script>
     <script>
@@ -104,23 +107,29 @@
         $('.btnLogout').click(function () {
             $(this).closest('form')[0].submit();
         });
-        function checkSession() {
-            $.ajax({
-                url: '@Url.Action("CheckSession", "User")',
-                type: 'GET',
-                success: function (res) {
-                    if (res.sessionExpired) {
-                        $.post('@Url.Action("Logout", "User")', function () {
-                            window.location.href = '@Url.Action("Login", "User")';
-                        });
-                    }
-                },
-                error: function (err) {
-                    console.error('Error checking session status', err);
-                }
+        // Idle logout: after 15 minutes without mouse/keyboard/touch activity the user is signed out
+        // (PCI-DSS 8.2.8). The server also expires idle sessions after 15 minutes. Polling the server is avoided
+        // on purpose: a request every few minutes would keep the session alive forever.
+        (function () {
+            const idleLimitMs = 15 * 60 * 1000;
+            let lastActivity = Date.now();
+            let loggingOut = false;
+            ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'].forEach(function (evt) {
+                document.addEventListener(evt, function () { lastActivity = Date.now(); }, { passive: true });
             });
-        }
-        setInterval(checkSession, 120000);
+            $(document).ajaxSend(function () { lastActivity = Date.now(); });
+            setInterval(function () {
+                if (!loggingOut && Date.now() - lastActivity >= idleLimitMs) {
+                    loggingOut = true;
+                    const form = $('.btnLogout').closest('form')[0];
+                    if (form) {
+                        form.submit();
+                    } else {
+                        window.location.href = '@Url.Action("Login", "User")';
+                    }
+                }
+            }, 30000);
+        })();
     </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

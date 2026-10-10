@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Cryptography.KeyDerivation;
+using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Newtonsoft.Json;
 using System.ComponentModel;
 using System.Data;
@@ -22,7 +22,9 @@ namespace Utility
         {
             var _jsonSettings = new JsonSerializerSettings()
             {
-                TypeNameHandling = TypeNameHandling.Auto,
+                // Never TypeNameHandling.Auto/All: "$type" in cached JSON would let whoever can write
+                // to the cache choose which .NET types get created (remote code execution).
+                TypeNameHandling = TypeNameHandling.None,
                 ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor,
                 PreserveReferencesHandling = PreserveReferencesHandling.Objects,
                 ObjectCreationHandling = ObjectCreationHandling.Auto
@@ -31,174 +33,77 @@ namespace Utility
         }
         #endregion
         #region Cryptography
-        private const string initVector = "pemgail9uzpgzl88";
-        private const int keysize = 256;
-        public static string EncryptString(string plainText, string passPhrase)
+        // The previous helpers (EncryptString/DecryptString, EncryptWithRandomIV/DecryptWithRandomIV,
+        // AesEncryptString/AesDecryptString, TripleDesEncrypt/TripleDesDecrypt) were removed: they used a key and IV
+        // hard-coded in source, an all-zero IV, the obsolete PasswordDeriveBytes, System.Random for IVs and 3DES.
+        // They were not used anywhere in the solution. Use the AES-GCM helpers below; keep the key OUTSIDE the code
+        // (environment variable / secret store) and pass it in.
+
+        private const int AesGcmNonceSize = 12; // 96-bit nonce, recommended for GCM
+        private const int AesGcmTagSize = 16;   // 128-bit authentication tag
+
+        /// <summary>
+        /// Authenticated encryption (AES-256-GCM) with a fresh random nonce per call.
+        /// Output: Base64( nonce | tag | ciphertext ). <paramref name="key"/> must be 32 bytes.
+        /// </summary>
+        public static string AesGcmEncrypt(string plainText, byte[] key)
         {
-            byte[] initVectorBytes = Encoding.UTF8.GetBytes(initVector);
-            byte[] plainTextBytes = Encoding.UTF8.GetBytes(plainText);
-            PasswordDeriveBytes password = new PasswordDeriveBytes(passPhrase, null);
-            byte[] keyBytes = password.GetBytes(keysize / 8);
-            Aes symmetricKey = Aes.Create();
-            symmetricKey.Mode = CipherMode.CBC;
-            ICryptoTransform encryptor = symmetricKey.CreateEncryptor(keyBytes, initVectorBytes);
-            MemoryStream memoryStream = new MemoryStream();
-            CryptoStream cryptoStream = new CryptoStream(memoryStream, encryptor, CryptoStreamMode.Write);
-            cryptoStream.Write(plainTextBytes, 0, plainTextBytes.Length);
-            cryptoStream.FlushFinalBlock();
-            byte[] cipherTextBytes = memoryStream.ToArray();
-            memoryStream.Close();
-            cryptoStream.Close();
-            return Convert.ToBase64String(cipherTextBytes);
-        }
-        public static string DecryptString(string cipherText, string passPhrase)
-        {
-            byte[] initVectorBytes = Encoding.UTF8.GetBytes(initVector);
-            byte[] cipherTextBytes = Convert.FromBase64String(cipherText);
-            PasswordDeriveBytes password = new PasswordDeriveBytes(passPhrase, null);
-            byte[] keyBytes = password.GetBytes(keysize / 8);
-            Aes symmetricKey = Aes.Create();
-            symmetricKey.Mode = CipherMode.CBC;
-            ICryptoTransform decryptor = symmetricKey.CreateDecryptor(keyBytes, initVectorBytes);
-            MemoryStream memoryStream = new MemoryStream(cipherTextBytes);
-            CryptoStream cryptoStream = new CryptoStream(memoryStream, decryptor, CryptoStreamMode.Read);
-            byte[] plainTextBytes = new byte[cipherTextBytes.Length];
-            int decryptedByteCount = cryptoStream.Read(plainTextBytes, 0, plainTextBytes.Length);
-            memoryStream.Close();
-            cryptoStream.Close();
-            return Encoding.UTF8.GetString(plainTextBytes, 0, decryptedByteCount);
-        }
-        
-        private const string key = "b14ca5898a4e4133bbce2ea2315a1916";
-        public static string EncryptWithRandomIV(string plaintext)
-        {
-            string randomString = RandomStringGenerator(16);
-            string encryptedText = string.Empty;
-            if (!string.IsNullOrEmpty(plaintext))
+            ArgumentNullException.ThrowIfNull(plainText);
+            ValidateAesKey(key);
+            byte[] nonce = RandomNumberGenerator.GetBytes(AesGcmNonceSize);
+            byte[] plainBytes = Encoding.UTF8.GetBytes(plainText);
+            byte[] cipherBytes = new byte[plainBytes.Length];
+            byte[] tag = new byte[AesGcmTagSize];
+            using (var aes = new AesGcm(key, AesGcmTagSize))
             {
-                using Aes aes = Aes.Create();
-                aes.Key = Encoding.UTF8.GetBytes(key);
-                aes.Mode = CipherMode.CBC;
-                aes.Padding = PaddingMode.PKCS7;
-                aes.IV = Encoding.UTF8.GetBytes(randomString);
-
-                ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-
-                using MemoryStream ms = new();
-                using CryptoStream cs = new(ms, encryptor, CryptoStreamMode.Write);
-                using StreamWriter writer = new(cs);
-
-                writer.Write(plaintext);
-                writer.Flush();
-                cs.FlushFinalBlock();
-
-                byte[] encryptedBytes = ms.ToArray();
-                string encryptedString = randomString + "||" + Convert.ToBase64String(encryptedBytes);
-                encryptedText = Convert.ToBase64String(Encoding.UTF8.GetBytes(encryptedString));
+                aes.Encrypt(nonce, plainBytes, cipherBytes, tag);
             }
-            return encryptedText;
+            byte[] output = new byte[AesGcmNonceSize + AesGcmTagSize + cipherBytes.Length];
+            Buffer.BlockCopy(nonce, 0, output, 0, AesGcmNonceSize);
+            Buffer.BlockCopy(tag, 0, output, AesGcmNonceSize, AesGcmTagSize);
+            Buffer.BlockCopy(cipherBytes, 0, output, AesGcmNonceSize + AesGcmTagSize, cipherBytes.Length);
+            return Convert.ToBase64String(output);
         }
-        public static string DecryptWithRandomIV(string encryptedText)
+
+        /// <summary>Decrypts a value produced by <see cref="AesGcmEncrypt"/>. Throws if the data was tampered with.</summary>
+        public static string AesGcmDecrypt(string cipherText, byte[] key)
         {
-            string plaintext = string.Empty;
-            if (!string.IsNullOrEmpty(encryptedText))
+            ArgumentNullException.ThrowIfNull(cipherText);
+            ValidateAesKey(key);
+            byte[] input = Convert.FromBase64String(cipherText);
+            if (input.Length < AesGcmNonceSize + AesGcmTagSize)
             {
-                byte[] byteArray = Convert.FromBase64String(encryptedText);
-                string decodedString = Encoding.UTF8.GetString(byteArray);
-                string[] parts = decodedString.Split("||");
-                var data = Convert.FromBase64String(parts[1]);
-                using Aes aes = Aes.Create();
-                aes.Key = Encoding.UTF8.GetBytes(key);
-                aes.Mode = CipherMode.CBC;
-                aes.IV = Encoding.UTF8.GetBytes(parts[0]);
-                aes.Padding = PaddingMode.PKCS7;
-                ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-                using MemoryStream ms = new(data);
-                using CryptoStream cs = new(ms, decryptor, CryptoStreamMode.Read);
-                using StreamReader reader = new(cs);
-                plaintext = reader.ReadToEnd();
+                throw new CryptographicException("Invalid cipher text.");
             }
-            return plaintext;
-        }
-        private static string RandomStringGenerator(int length)
-        {
-            string characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-            Random random = new Random();
-            StringBuilder result = new StringBuilder(length);
-            for (int i = 0; i < length; i++)
+            byte[] nonce = input.AsSpan(0, AesGcmNonceSize).ToArray();
+            byte[] tag = input.AsSpan(AesGcmNonceSize, AesGcmTagSize).ToArray();
+            byte[] cipherBytes = input.AsSpan(AesGcmNonceSize + AesGcmTagSize).ToArray();
+            byte[] plainBytes = new byte[cipherBytes.Length];
+            using (var aes = new AesGcm(key, AesGcmTagSize))
             {
-                int index = random.Next(characters.Length);
-                result.Append(characters[index]);
+                aes.Decrypt(nonce, cipherBytes, tag, plainBytes);
             }
-            string iv = result.ToString();
-            return iv;
+            return Encoding.UTF8.GetString(plainBytes);
         }
-        
-        public static string AesEncryptString(string key, string plainText)
-        {
-            byte[] iv = new byte[16];
-            byte[] array;
 
-            using (Aes aes = Aes.Create())
+        /// <summary>Converts a Base64 key from configuration (e.g. an environment variable) into key bytes.</summary>
+        public static byte[] AesKeyFromBase64(string? base64Key)
+        {
+            if (string.IsNullOrWhiteSpace(base64Key))
             {
-                aes.Key = Encoding.UTF8.GetBytes(key);
-                aes.IV = iv;
-
-                ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-
-                using (MemoryStream memoryStream = new())
-                {
-                    using (CryptoStream cryptoStream = new(memoryStream, encryptor, CryptoStreamMode.Write))
-                    {
-                        using (StreamWriter streamWriter = new(cryptoStream))
-                        {
-                            streamWriter.Write(plainText);
-                        }
-
-                        array = memoryStream.ToArray();
-                    }
-                }
+                throw new InvalidOperationException("Encryption key is not configured.");
             }
-            return Convert.ToBase64String(array);
+            byte[] key = Convert.FromBase64String(base64Key);
+            ValidateAesKey(key);
+            return key;
         }
-        public static string AesDecryptString(string key, string cipherText)
-        {
-            byte[] iv = new byte[16];
-            byte[] buffer = Convert.FromBase64String(cipherText);
 
-            using (Aes aes = Aes.Create())
+        private static void ValidateAesKey(byte[] key)
+        {
+            if (key == null || key.Length != 32)
             {
-                aes.Key = Encoding.UTF8.GetBytes(key);
-                aes.IV = iv;
-                ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-
-                using (MemoryStream memoryStream = new(buffer))
-                {
-                    using (CryptoStream cryptoStream = new(memoryStream, decryptor, CryptoStreamMode.Read))
-                    {
-                        using (StreamReader streamReader = new(cryptoStream))
-                        {
-                            return streamReader.ReadToEnd();
-                        }
-                    }
-                }
+                throw new CryptographicException("AES-256 key must be exactly 32 bytes.");
             }
-        }
-        public static string TripleDesEncrypt(string textToEncrypt, string key1, string key2)
-        {
-            TripleDES tdes = TripleDES.Create();
-            tdes.Key = Encoding.ASCII.GetBytes(key1);
-            tdes.IV = Encoding.ASCII.GetBytes(key2);
-            byte[] buffer = Encoding.ASCII.GetBytes(textToEncrypt);
-            return Convert.ToBase64String(tdes.CreateEncryptor().TransformFinalBlock(buffer, 0, buffer.Length));
-        }
-        public static string TripleDesDecrypt(string textToDecrypt, string key1, string key2)
-        {
-            byte[] buffer = Convert.FromBase64String(textToDecrypt);
-            TripleDES des = TripleDES.Create();
-            des.Key = Encoding.ASCII.GetBytes(key1);
-            des.IV = Encoding.ASCII.GetBytes(key2);
-            return Encoding.ASCII.GetString(des.CreateDecryptor().TransformFinalBlock(buffer, 0, buffer.Length));
         }
         #endregion
         #region Math
@@ -226,9 +131,8 @@ namespace Utility
         }
         public static string GenerateTrxId(string rrn)
         {
-            var otpRandom = new Random();
-            char padLeft = Convert.ToChar(otpRandom.Next(1, 2).ToString());
-            var num = Convert.ToInt64(rrn + otpRandom.Next(1, 99).ToString().PadLeft(2, padLeft));
+            // Cryptographically secure random suffix (System.Random is predictable).
+            var num = Convert.ToInt64(rrn + RandomNumberGenerator.GetInt32(1, 100).ToString().PadLeft(2, '1'));
             return DecimalToArbitrarySystem(num, 36);
         }
         public static string DecimalToArbitrarySystem(long decimalNumber, int radix)
@@ -265,22 +169,21 @@ namespace Utility
         #region Imaging
         public static ImageFormat GetImageFormat(byte[] bytes)
         {
-            var bmp = Encoding.ASCII.GetBytes("BM");
-            var gif = Encoding.ASCII.GetBytes("GIF");
-            var png = new byte[] { 137, 80, 78, 71 };
-            var tiff = new byte[] { 73, 73, 42 };
-            var tiff2 = new byte[] { 77, 77, 42 };
-            var jpeg = new byte[] { 255, 216, 255, 224 };
-            var jpeg2 = new byte[] { 255, 216, 255, 225 };
-            var pdf = new byte[] { 37, 80, 68, 70 };
+            if (bytes == null || bytes.Length < 4)
+                return ImageFormat.unknown;
+            var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+            var jpeg = new byte[] { 0xFF, 0xD8, 0xFF };          // all JPEG variants (JFIF, EXIF, raw, ...)
+            var gif87 = Encoding.ASCII.GetBytes("GIF87a");
+            var gif89 = Encoding.ASCII.GetBytes("GIF89a");
+            var pdf = Encoding.ASCII.GetBytes("%PDF");
 
-            if (png.SequenceEqual(bytes.Take(png.Length)))
+            if (bytes.Take(png.Length).SequenceEqual(png))
                 return ImageFormat.png;
-            if (jpeg.SequenceEqual(bytes.Take(jpeg.Length)))
+            if (bytes.Take(jpeg.Length).SequenceEqual(jpeg))
                 return ImageFormat.jpeg;
-            if (jpeg2.SequenceEqual(bytes.Take(jpeg2.Length)))
-                return ImageFormat.jpeg;
-            if (pdf.SequenceEqual(bytes.Take(pdf.Length)))
+            if (bytes.Take(gif87.Length).SequenceEqual(gif87) || bytes.Take(gif89.Length).SequenceEqual(gif89))
+                return ImageFormat.gif;
+            if (bytes.Take(pdf.Length).SequenceEqual(pdf))
                 return ImageFormat.PDF;
             return ImageFormat.unknown;
         }
@@ -296,33 +199,81 @@ namespace Utility
         }
         #endregion
         #region Password
-        public static string GenerateHashPassword(string password, byte[]? salt = null, bool needsOnlyHash = false)
+        // Format: PBKDF2-SHA256$<iterations>$<base64 salt>$<base64 hash>
+        // Old format "<base64 hash>:<base64 salt>" (10,000 iterations) is still accepted by VerifyPassword and
+        // is upgraded automatically at the next successful login (see PasswordNeedsRehash).
+        private const string PasswordHashPrefix = "PBKDF2-SHA256";
+        private const int PasswordIterations = 600_000; // OWASP recommendation for PBKDF2-HMAC-SHA256
+        private const int LegacyPasswordIterations = 10_000;
+        private const int PasswordSaltSize = 16;
+        private const int PasswordHashSize = 32;
+
+        /// <summary>A valid hash of a random value, used to keep login timing equal for unknown user names.</summary>
+        public static readonly string DummyPasswordHash = GenerateHashPassword(Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)));
+
+        public static string GenerateHashPassword(string password)
         {
-            if (salt == null || salt.Length != 16)
-            {
-                salt = new byte[128 / 8];
-                using var rng = RandomNumberGenerator.Create();
-                rng.GetBytes(salt);
-            }
-            string hashed = Convert.ToBase64String(KeyDerivation.Pbkdf2(
-                password: password,
-                salt: salt,
-                prf: KeyDerivationPrf.HMACSHA256,
-                iterationCount: 10000,
-                numBytesRequested: 256 / 8));
-            if (needsOnlyHash) return hashed;
-            return $"{hashed}:{Convert.ToBase64String(salt)}";
+            ArgumentNullException.ThrowIfNull(password);
+            byte[] salt = RandomNumberGenerator.GetBytes(PasswordSaltSize);
+            byte[] hash = KeyDerivation.Pbkdf2(password, salt, KeyDerivationPrf.HMACSHA256, PasswordIterations, PasswordHashSize);
+            return $"{PasswordHashPrefix}${PasswordIterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
         }
+
         public static bool VerifyPassword(string hashedPasswordWithSalt, string passwordToCheck)
         {
-            var passwordAndHash = hashedPasswordWithSalt.Split(':');
-            if (passwordAndHash == null || passwordAndHash.Length != 2)
+            if (string.IsNullOrEmpty(hashedPasswordWithSalt) || passwordToCheck == null)
+            {
                 return false;
-            var salt = Convert.FromBase64String(passwordAndHash[1]);
-            if (salt == null)
-                return false;
-            var hashOfpasswordToCheck = GenerateHashPassword(passwordToCheck, salt, true);
-            return String.Compare(passwordAndHash[0], hashOfpasswordToCheck) == 0;
+            }
+            try
+            {
+                byte[] salt;
+                byte[] expected;
+                int iterations;
+                if (hashedPasswordWithSalt.StartsWith(PasswordHashPrefix + "$", StringComparison.Ordinal))
+                {
+                    var parts = hashedPasswordWithSalt.Split('$');
+                    if (parts.Length != 4 || !int.TryParse(parts[1], out iterations) || iterations <= 0)
+                    {
+                        return false;
+                    }
+                    salt = Convert.FromBase64String(parts[2]);
+                    expected = Convert.FromBase64String(parts[3]);
+                }
+                else
+                {
+                    var parts = hashedPasswordWithSalt.Split(':');
+                    if (parts.Length != 2)
+                    {
+                        return false;
+                    }
+                    expected = Convert.FromBase64String(parts[0]);
+                    salt = Convert.FromBase64String(parts[1]);
+                    iterations = LegacyPasswordIterations;
+                }
+                if (salt.Length == 0 || expected.Length == 0)
+                {
+                    return false;
+                }
+                byte[] actual = KeyDerivation.Pbkdf2(passwordToCheck, salt, KeyDerivationPrf.HMACSHA256, iterations, expected.Length);
+                // Constant-time comparison: does not leak how many bytes matched.
+                return CryptographicOperations.FixedTimeEquals(actual, expected);
+            }
+            catch (FormatException)
+            {
+                return false; // corrupted hash in the database
+            }
+        }
+
+        /// <summary>True when the stored hash uses the old format or fewer iterations than the current setting.</summary>
+        public static bool PasswordNeedsRehash(string? hashedPassword)
+        {
+            if (string.IsNullOrEmpty(hashedPassword) || !hashedPassword.StartsWith(PasswordHashPrefix + "$", StringComparison.Ordinal))
+            {
+                return true;
+            }
+            var parts = hashedPassword.Split('$');
+            return parts.Length != 4 || !int.TryParse(parts[1], out var iterations) || iterations < PasswordIterations;
         }
         #endregion
         #region DateTime
@@ -466,10 +417,8 @@ namespace Utility
         }
         public static string RandomString(int length)
         {
-            Random random = new Random();
             const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            return new string(Enumerable.Repeat(chars, length)
-                .Select(s => s[random.Next(s.Length)]).ToArray());
+            return RandomNumberGenerator.GetString(chars, length);
         }
         #endregion
         #region Imoji
@@ -485,7 +434,8 @@ namespace Utility
         #region Otp
         public static string GenerateOTP()
         {
-            return (new Random()).Next(100000, 999999).ToString();
+            // CSPRNG; upper bound is exclusive so 999999 can be produced too.
+            return RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
         }
         public static DateTime GetOtpExpiryDateTime(int minutes)
         {

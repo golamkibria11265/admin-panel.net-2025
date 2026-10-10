@@ -2,15 +2,27 @@ using Bll.Extensions;
 using Dll.Extensions;
 using Utility.Extensions;
 using Serilog;
-using System.Reflection;
 using Bll.Services.CommonService;
 using Serilog.Sinks.SystemConsole.Themes;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
+using System.Net;
+using WebApi.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
+bool isDevelopment = builder.Environment.IsDevelopment();
 
-#region Serilog Configuration For Sending Log To Elastic Search
-string? logpath = builder.Configuration["FilePaths:LogFileRootDirectory"];
-Serilog.Debugging.SelfLog.Enable(Console.Out);
+#region Serilog Configuration
+// Log folder comes from configuration (FilePaths:LogFileRootDirectory, or the environment variable
+// FilePaths__LogFileRootDirectory). Falls back to a "logs" folder next to the application.
+string logDirectory = builder.Configuration["FilePaths:LogFileRootDirectory"] is { Length: > 0 } configuredLogDirectory
+    ? configuredLogDirectory
+    : Path.Combine(AppContext.BaseDirectory, "logs");
+if (isDevelopment)
+{
+    Serilog.Debugging.SelfLog.Enable(Console.Error);
+}
 builder.Host.UseSerilog((hostContext, services, configuration) =>
 {
     configuration.Enrich.FromLogContext()
@@ -20,22 +32,9 @@ builder.Host.UseSerilog((hostContext, services, configuration) =>
                         outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
                         theme: AnsiConsoleTheme.Code
                     )
-    .WriteTo.File(path: $"{logpath}.log", rollingInterval: RollingInterval.Hour, outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-    #region uncomment if elastic search is implemented
-    //.WriteTo.Elasticsearch(new Serilog.Sinks.Elasticsearch.ElasticsearchSinkOptions(new Uri(builder.Configuration["ElasticConfiguration:Uri"]!))
-    //{
-    //    IndexFormat = $"applogs-{Assembly.GetExecutingAssembly().GetName().Name?.ToLower().Replace(".", "-")}-{hostContext.HostingEnvironment.EnvironmentName.ToLower().Replace(".", "-")}-logs-{DateTime.UtcNow:yyyy-MM}",
-    //    AutoRegisterTemplate = true,
-    //    NumberOfShards = 2,
-    //    NumberOfReplicas = 1,
-    //    ModifyConnectionSettings = x =>
-    //    {
-    //        x.BasicAuthentication(builder.Configuration["ElasticConfiguration:UserName"]!, builder.Configuration["ElasticConfiguration:Password"]!);
-    //        x.ServerCertificateValidationCallback((sender, cert, chain, sslPolicyErrors) => true);
-    //        return x;
-    //    }
-    //})
-    #endregion
+    .WriteTo.File(path: Path.Combine(logDirectory, "webapi-.log"), rollingInterval: RollingInterval.Hour, outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    // Elasticsearch: if you enable it, keep certificate validation ON and read the credentials from
+    // environment variables / a secret store, never from appsettings.json.
     .Enrich.WithProperty("Environment", hostContext.HostingEnvironment.EnvironmentName)
     .ReadFrom.Configuration(hostContext.Configuration);
 });
@@ -44,17 +43,76 @@ builder.Host.UseSerilog((hostContext, services, configuration) =>
 builder.Services.AddBusinessLogicLayerServices(builder.Configuration);
 builder.Services.AddDataLogicLayerServices(builder.Configuration);
 builder.Services.AddUtilityServices(builder.Configuration);
+builder.Services.AddMemoryCache();
 
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    // Every action requires a signed-in, active user unless marked [AllowAnonymous].
+    options.Filters.Add<CheckSessionWithRedirect>();
+    // Every POST/PUT/PATCH/DELETE must carry a valid anti-forgery token (form field or header).
+    options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+});
+
+CookieSecurePolicy cookieSecurePolicy = isDevelopment ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "RequestVerificationToken"; // sent by wwwroot/js/CustomScripts/security.js
+    options.Cookie.Name = ".AdminPanel.Antiforgery";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = cookieSecurePolicy;
+});
+
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(2);
+    // PCI-DSS 8.2.8: re-authenticate after at most 15 minutes of inactivity.
+    options.IdleTimeout = TimeSpan.FromMinutes(15);
+    options.Cookie.Name = ".AdminPanel.Session";
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = cookieSecurePolicy;
+});
 
+// Keys that protect the session, anti-forgery and TempData cookies. Without a persistent folder they are
+// regenerated on every container restart and everyone is logged out. Set DataProtection__KeysDirectory to a
+// mounted volume that only the application user can read.
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("AdminPanel");
+if (builder.Configuration["DataProtection:KeysDirectory"] is { Length: > 0 } keysDirectory)
+{
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
+}
+
+// Behind nginx: trust X-Forwarded-For / X-Forwarded-Proto only from known proxies, so the app sees the real
+// client IP (login lockout, logs) and knows the original request was HTTPS.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Loopback (nginx on the same host) is trusted by default. Add more, e.g. the Docker bridge network:
+    // ForwardedHeaders__KnownNetworks=172.16.0.0/12
+    foreach (var entry in (builder.Configuration["ForwardedHeaders:KnownNetworks"] ?? string.Empty)
+                 .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        var parts = entry.Split('/');
+        if (parts.Length == 2 && IPAddress.TryParse(parts[0], out var prefix) && int.TryParse(parts[1], out var length))
+        {
+            options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, length));
+        }
+    }
+    foreach (var entry in (builder.Configuration["ForwardedHeaders:KnownProxies"] ?? string.Empty)
+                 .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        if (IPAddress.TryParse(entry, out var proxy))
+        {
+            options.KnownProxies.Add(proxy);
+        }
+    }
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -62,19 +120,31 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-#region uncomment this block to seed data. after you are done with data seeding, comment this block again. else duplicate data will be inserted.
+#region Data seeding (one-off)
+// To seed a fresh database: set the environment variable Seed__AdminPassword (at least 12 characters,
+// letters and digits), uncomment this block, run once, then comment it again and remove the variable.
+// Seeding is skipped automatically if the "admin" user already exists.
 //using (var scope = app.Services.CreateScope())
 //{
-//    var services = scope.ServiceProvider;
-//    var seeder = services.GetRequiredService<IDataSeedingService>();
-//    seeder.SeedData();
+//    var seeder = scope.ServiceProvider.GetRequiredService<IDataSeedingService>();
+//    await seeder.SeedDataAsync();
 //}
 #endregion
 
+// Basic security headers for every response.
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    await next();
+});
+
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-app.UseSession();
 app.UseRouting();
+app.UseSession();
 
 app.UseAuthorization();
 

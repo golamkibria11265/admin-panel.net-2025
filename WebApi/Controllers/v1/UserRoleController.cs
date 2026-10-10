@@ -1,8 +1,10 @@
-﻿using Bll.Services.ApService;
+using Bll.Services.ApService;
 using Microsoft.AspNetCore.Mvc;
+using WebApi.Filters;
 
 namespace WebApi.Controllers.v1
 {
+    // Sign-in is enforced globally by CheckSessionWithRedirect (see Program.cs).
     public class UserRoleController : Controller
     {
         private readonly IUserRoleService _iUserRoleService;
@@ -12,6 +14,8 @@ namespace WebApi.Controllers.v1
             _iUserRoleService = iUserRoleService;
             _logger = logger;
         }
+
+        [HasPermission]
         public IActionResult Index()
         {
             return View();

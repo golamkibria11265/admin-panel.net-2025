@@ -1,4 +1,4 @@
-﻿@model Dll.Models.ViewModels.LogInViewModel
+@model Dll.Models.ViewModels.LogInViewModel
 @{
     ViewData["Title"] = "Login";
     Layout = null;
@@ -96,16 +96,21 @@
           </div>
         </div>
         <div class="text-center text-muted mt-3">
-                Don't have account yet? <a href="https://localhost:7018/user/SignUp" tabindex="-1">Sign up</a>
+                New accounts are created by an administrator.
         </div>
       </div>
     </div>
   </body>
 </html>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="~/lib/jquery/jquery.min.js"></script>
 <script src="~/AdminLTE/plugins/toastr/toastr.min.js"></script>
-<script src="~/js/customscripts/login.js"></script>
+<script src="~/js/CustomScripts/security.js" asp-append-version="true"></script>
+<script src="~/js/CustomScripts/login.js" asp-append-version="true"></script>
 <script>
+    @if (TempData["SessionExpired"] is string sessionMessage && !string.IsNullOrEmpty(sessionMessage))
+    {
+        @:toastr.warning(@Json.Serialize(sessionMessage));
+    }
     $(document).ajaxStart(function () {
         $('#AjaxLoader').show();
     }).ajaxStop(function () {

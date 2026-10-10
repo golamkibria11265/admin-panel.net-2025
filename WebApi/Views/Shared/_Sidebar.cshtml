@@ -1,9 +1,16 @@
-﻿@using Dll.Models.ViewModels
+@using Dll.Models.ViewModels
 @using System.Text.Json
 @inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
 @{
     var permissionString = HttpContextAccessor.HttpContext?.Session.GetString("RoleWiseMenuPermission");
-    var roleWiseScreenPermissions = JsonSerializer.Deserialize<List<NestedMenuInfoViewModel>>(permissionString ?? string.Empty);
+    List<NestedMenuInfoViewModel>? roleWiseScreenPermissions = null;
+    if (!string.IsNullOrEmpty(permissionString))
+    {
+        try { roleWiseScreenPermissions = JsonSerializer.Deserialize<List<NestedMenuInfoViewModel>>(permissionString); }
+        catch (JsonException) { roleWiseScreenPermissions = null; }
+    }
+    var sidebarUserName = HttpContextAccessor.HttpContext?.Session.GetString("UserName");
+    var sidebarRoleName = HttpContextAccessor.HttpContext?.Session.GetString("RoleName");
     string controller = Convert.ToString(ViewContext.RouteData.Values["Controller"]) ?? string.Empty;
     string action = Convert.ToString(ViewContext.RouteData.Values["Action"]) ?? string.Empty;
 }
@@ -132,8 +139,8 @@
                 <a href="#" class="nav-link d-flex lh-1 text-reset p-0" data-bs-toggle="dropdown" aria-label="open user menu">
                     <span class="avatar avatar-sm" style="background-image: url(./static/avatars/000m.jpg)"></span>
                     <div class="d-none d-xl-block ps-2">
-                        <div>paweł kuna</div>
-                        <div class="mt-1 small text-muted">ui designer</div>
+                        <div>@sidebarUserName</div>
+                        <div class="mt-1 small text-muted">@sidebarRoleName</div>
                     </div>
                 </a>
                 <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
@@ -142,7 +149,10 @@
                     <a href="#" class="dropdown-item">feedback</a>
                     <div class="dropdown-divider"></div>
                     <a href="./settings.html" class="dropdown-item">settings</a>
-                    <a href="./sign-in.html" class="dropdown-item">logout</a>
+                    @using (Html.BeginForm("Logout", "User", FormMethod.Post))
+                    {
+                        <button type="submit" class="dropdown-item">logout</button>
+                    }
                 </div>
             </div>
         </div>

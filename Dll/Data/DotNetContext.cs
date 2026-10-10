@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Dll.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -72,6 +72,9 @@ public partial class DotNetContext : DbContext
         modelBuilder.Entity<ApUser>(entity =>
         {
             entity.ToTable("ApUser");
+            // User names are unique (migration 20261011000000_UniqueUserName).
+            entity.Property(e => e.UserName).HasMaxLength(256);
+            entity.HasIndex(e => e.UserName).IsUnique().HasFilter("[UserName] IS NOT NULL");
         });
 
         modelBuilder.Entity<ApUserRole>(entity =>

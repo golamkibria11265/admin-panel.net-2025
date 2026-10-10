@@ -1,4 +1,4 @@
-﻿using Bll.Services.FileStorageService.Context.Concrete.Root;
+using Bll.Services.FileStorageService.Context.Concrete.Root;
 using Bll.Services.FileStorageService.Storage.Base;
 using Microsoft.AspNetCore.Http;
 using Utility;
@@ -40,7 +40,8 @@ namespace Bll.Services.FileStorageService.Storage.Concrete.Root
                 {
                     Directory.CreateDirectory(context.DestinationPath);
                 }
-                var path = Path.Combine(context.DestinationPath, context.File.Identifier).ToLower();
+                // No ToLower(): Linux paths are case-sensitive. GetFileName() blocks "../" in the identifier.
+                var path = Path.Combine(context.DestinationPath, Path.GetFileName(context.File.Identifier));
                 using (var bits = new FileStream(path, FileMode.Create))
                 {
                     await context.File.File.CopyToAsync(bits);
@@ -52,7 +53,7 @@ namespace Bll.Services.FileStorageService.Storage.Concrete.Root
             catch (Exception ex)
             {
                 commonResponse.code = StatusCodes.Status500InternalServerError;
-                commonResponse.messages = new List<string> { ex.Message };
+                commonResponse.messages = new List<string> { "File upload failed" };
             }
             return commonResponse;
         }

@@ -1,8 +1,8 @@
-﻿<div class="col-12">
+<div class="col-12">
     <div class="card">
         <div class="d-flex justify-content-center">
             <div class="card-header">
-                <a id="btnSearch" class="btn btn-success text-white"><i class="fas fa-random"></i>Allow all menus as permission</a>
+                <a id="btnSearch" href="#" class="btn btn-success text-white"><i class="fas fa-random"></i>Allow all menus as permission</a>
             </div>
         </div>
     </div>
@@ -10,16 +10,15 @@
 
 @section Scripts {
     <script>
-        $("#btnSearch").click(function () {
+        $("#btnSearch").click(function (e) {
+            e.preventDefault();
             activatejQueryTable();
         });
         function activatejQueryTable() {
             try {
                 $.ajax({
-                    type: 'GET',
+                    type: 'POST', // changes data: POST + anti-forgery header (added globally in _Layout)
                     url: '@Url.Action("SyncPermissionList", "Permission")',
-                    contentType: false,
-                    processData: false,
                     success: function (res) {
                         if (res.hasOwnProperty('code') && res.code == 200) {
                             res.messages.forEach(element => {
@@ -50,5 +49,5 @@
             }
         }
     </script>
-    <script src="~/js/customscripts/permission.js"></script>
+    <script src="~/js/CustomScripts/permission.js"></script>
 }

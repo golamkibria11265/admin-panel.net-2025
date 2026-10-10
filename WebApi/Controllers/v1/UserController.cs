@@ -1,42 +1,56 @@
-﻿using Bll.Services.ApService;
-using Dll.Data.Entities;
+using Bll.Services.ApService;
+using Bll.Services.CommonService;
 using Dll.Models.ViewModels;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Utility;
 using Utility.Exceptions;
 using Utility.Models.ResponseModels;
+using WebApi.Extensions;
+using WebApi.Filters;
 
 namespace WebApi.Controllers.v1
 {
+    // Sign-in is enforced globally by CheckSessionWithRedirect (see Program.cs); only the
+    // actions marked [AllowAnonymous] can be used without signing in.
     public class UserController : Controller
     {
+        private const string InvalidCredentialsMessage = "Invalid user name or password.";
         private readonly IUserService _userService;
+        private readonly IAccessControlService _accessControlService;
+        private readonly ILoginAttemptService _loginAttemptService;
         private readonly Serilog.ILogger _logger;
-        private readonly IHttpContextAccessor _iHttpContextAccesor;
-        private readonly IConfiguration _iConfiguration;
 
         public UserController
         (
             IUserService userService,
-            IHttpContextAccessor iHttpContextAccesor,
-            Serilog.ILogger logger,
-            IConfiguration iConfiguration
+            IAccessControlService accessControlService,
+            ILoginAttemptService loginAttemptService,
+            Serilog.ILogger logger
         )
         {
             _userService = userService;
+            _accessControlService = accessControlService;
+            _loginAttemptService = loginAttemptService;
             _logger = logger;
-            _iHttpContextAccesor = iHttpContextAccesor;
-            _iConfiguration = iConfiguration;
         }
+
+        [HasPermission]
         public IActionResult Index()
         {
             return View();
         }
+
+        // Only administrators (role permission "User/SignUp") can create accounts.
+        [HasPermission]
+        [HttpGet]
         public IActionResult SignUp()
         {
             return View();
         }
+
+        [HasPermission]
         [HttpPost]
         public async Task<ActionResult> SignUp(SignUpViewModel model)
         {
@@ -45,23 +59,29 @@ namespace WebApi.Controllers.v1
             {
                 if (!ModelState.IsValid)
                 {
-                    throw new CustomApplicationException("Model is not valid", StatusCodes.Status400BadRequest);
+                    var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                    actionResponse.code = StatusCodes.Status400BadRequest;
+                    actionResponse.messages = errors.Count > 0 ? errors : new List<string> { "Please check the form." };
+                    return Json(actionResponse);
                 }
-                ApiResponse result = await _userService.IsUsernameTaken(model.UserName ?? string.Empty);
-                if (result.code != StatusCodes.Status200OK)
+                string userName = model.UserName!.Trim();
+                await _userService.IsUsernameTaken(userName); // throws CustomApplicationException when taken
+
+                long currentUserId = HttpContext.GetSessionUserId();
+                UserViewModel userViewModel = new()
                 {
-                    throw new CustomApplicationException("This user name is taken");
-                }
-                UserViewModel userViewModel = new UserViewModel();
-                userViewModel.UserName = model.UserName;
-                userViewModel.Email = model.Email;
-                userViewModel.Password = model.Password;
-                userViewModel.Mobile = model.Mobile;
+                    UserName = userName,
+                    Email = model.Email,
+                    Password = model.Password,
+                    Mobile = model.Mobile,
+                    CreatedBy = currentUserId <= int.MaxValue ? (int)currentUserId : null
+                };
                 ApiResponse response = await _userService.AddUser(userViewModel);
-                if(response.code == StatusCodes.Status200OK)
+                if (response.code == StatusCodes.Status200OK)
                 {
+                    _logger.Information("User {NewUserName} created by user {UserId}", userName, currentUserId);
                     actionResponse.code = StatusCodes.Status200OK;
-                    actionResponse.messages = new List<string>() { "You are registered successfully. Please log in" };
+                    actionResponse.messages = new List<string>() { "User created successfully. Assign a role before the user can sign in." };
                     return Json(actionResponse);
                 }
                 actionResponse.code = StatusCodes.Status417ExpectationFailed;
@@ -71,143 +91,128 @@ namespace WebApi.Controllers.v1
             catch (Exception ex)
             {
                 actionResponse.code = StatusCodes.Status417ExpectationFailed;
-                actionResponse.messages = new List<string>() { ex.Message };
+                actionResponse.messages = SafeErrorMessage.For(ex);
                 _logger.Error(ex, "Error in UserController/SignUp");
                 return Json(actionResponse);
             }
         }
+
+        [AllowAnonymous]
+        [HttpGet]
         public IActionResult Login()
         {
+            if (HttpContext.GetSessionUserId() > 0)
+            {
+                return RedirectToAction("Index", "Home");
+            }
             return View();
         }
+
+        [AllowAnonymous]
         [HttpPost]
         public async Task<ActionResult> Login(LogInViewModel login)
         {
-            _logger.Information("login attempt for user: ", login.userName);
-
             ActionResponse actionResponse = new();
+            string userName = (login.userName ?? string.Empty).Trim();
+            string? ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+            _logger.Information("Login attempt for user {UserName} from {IpAddress}", userName, ipAddress);
+
+            // Start every login from an empty session, so nothing from a previous user or a failed attempt survives.
+            HttpContext.Session.Clear();
             try
             {
                 if (!ModelState.IsValid)
                 {
-                    throw new CustomApplicationException("Model is not valid", StatusCodes.Status400BadRequest);
+                    actionResponse.code = StatusCodes.Status400BadRequest;
+                    actionResponse.messages = new List<string> { "Please enter your user name and password." };
+                    return Json(actionResponse);
                 }
-                var httpContext = _iHttpContextAccesor.HttpContext;
-                var isFirstAdminExist = await _userService.IsFirstAdminExist(login.userName ?? string.Empty, login.password ?? string.Empty);
-                if (httpContext == null)
+                if (_loginAttemptService.IsLockedOut(userName, ipAddress))
                 {
-                    throw new CustomApplicationException("HttpContext not found, Please contact the administrator");
+                    _logger.Warning("Login blocked (too many failed attempts) for user {UserName} from {IpAddress}", userName, ipAddress);
+                    actionResponse.code = StatusCodes.Status429TooManyRequests;
+                    actionResponse.messages = new List<string>
+                    {
+                        $"Too many failed attempts. Please try again in {(int)_loginAttemptService.LockoutDuration.TotalMinutes} minutes or contact the administrator."
+                    };
+                    return Json(actionResponse);
                 }
-                if (isFirstAdminExist.code != StatusCodes.Status200OK)
+
+                var user = await _userService.ValidateCredentialsAsync(userName, login.password ?? string.Empty);
+                if (user == null)
                 {
-                    throw new CustomApplicationException("Role not found, Please contact the administrator");
+                    _loginAttemptService.RegisterFailure(userName, ipAddress);
+                    _logger.Warning("Failed login for user {UserName} from {IpAddress}", userName, ipAddress);
+                    actionResponse.code = StatusCodes.Status401Unauthorized;
+                    actionResponse.messages = new List<string> { InvalidCredentialsMessage };
+                    return Json(actionResponse);
                 }
-                ApiResponse roleDataByUserName = await _userService.getRoleByUserName(login.userName ?? string.Empty);
-                if (roleDataByUserName.data == null)
-                {
-                    throw new CustomApplicationException("User role is not found");
-                }
-                string userName = login.userName ?? string.Empty;
-                string? roleName = roleDataByUserName.data.ToString();
+                _loginAttemptService.RegisterSuccess(userName);
+
+                ApiResponse roleDataByUserName = await _userService.getRoleByUserName(user.UserName ?? userName);
+                string? roleName = roleDataByUserName.data?.ToString();
                 if (string.IsNullOrWhiteSpace(roleName))
                 {
                     throw new CustomApplicationException("Role not found, Please contact the administrator");
                 }
-                httpContext.Session.SetString("UserName", userName);
-                httpContext.Session.SetString("RoleName", roleName);
-                ApiResponse userRoleWisePermissionInfo = await _userService.GetUserRoleWisePermissionList(roleName);
-                if (userRoleWisePermissionInfo.data == null)
-                {
-                    throw new CustomApplicationException("User permission is are not found");
-                }
-                List<PermissionInfoViewModel>? userRoleWisePermissionInfoList = userRoleWisePermissionInfo.data as List<PermissionInfoViewModel>;
-                if (userRoleWisePermissionInfoList == null)
-                {
-                    throw new CustomApplicationException("User role list is not found");
-                }
-                httpContext.Session.SetString("RoleWisePermission", JsonSerializer.Serialize(userRoleWisePermissionInfoList));
 
-                ApiResponse userRoleWiseNestedMenuList = _userService.GetUserNestedMenuList(userRoleWisePermissionInfoList);
-                if (userRoleWiseNestedMenuList == null)
-                {
-                    throw new CustomApplicationException("User nested menu list is not found");
-                }
-                List<NestedMenuInfoViewModel>? userRoleWiseNestedMenuInfoList = userRoleWiseNestedMenuList.data as List<NestedMenuInfoViewModel>;
-                httpContext.Session.SetString("RoleWiseMenuPermission", JsonSerializer.Serialize(userRoleWiseNestedMenuInfoList));
+                var permissions = (await _accessControlService.GetPermissionsAsync(user.Id)).ToList();
+                ApiResponse nestedMenu = _userService.GetUserNestedMenuList(permissions);
+                var nestedMenuList = nestedMenu.data as List<NestedMenuInfoViewModel> ?? new List<NestedMenuInfoViewModel>();
 
-                string? role_name = httpContext.Session.GetString("RoleName");
-                string? user_name = httpContext.Session.GetString("UserName");
+                // Session values used by the layout (user name, sidebar menu). Authorization itself is always
+                // re-checked against the database by CheckSessionWithRedirect / HasPermission.
+                HttpContext.Session.SetString(SessionKeys.UserName, user.UserName ?? userName);
+                HttpContext.Session.SetString(SessionKeys.RoleName, roleName);
+                HttpContext.Session.SetString(SessionKeys.RoleWisePermission, JsonSerializer.Serialize(permissions));
+                HttpContext.Session.SetString(SessionKeys.RoleWiseMenuPermission, JsonSerializer.Serialize(nestedMenuList));
+                // Set LAST: from here on the user counts as signed in.
+                HttpContext.Session.SetString(SessionKeys.UserId, user.Id.ToString());
 
-                ViewBag.userName = user_name;
-                ViewBag.roleName = role_name;
-
-                ApiResponse currentUserInfo = await _userService.GetCurrentUserInfo();
-                if (currentUserInfo.data == null)
-                {
-                    throw new CustomApplicationException("Current user is not found");
-                }
-                ApUser? user = currentUserInfo.data as ApUser;
-                if (user == null)
-                {
-                    throw new CustomApplicationException("Current user is not found");
-                }
-                httpContext.Session.SetString("Id", user.Id.ToString());
-                if (userRoleWisePermissionInfoList.Any(a => a.ControllerName!.ToLower() == "Home".ToLower() && a.ActionName!.ToLower() == "Index".ToLower()))
-                {
-                    actionResponse.code = StatusCodes.Status200OK;
-                    actionResponse.messages = new List<string>() { "Successfully logged In" };
-                    actionResponse.redirect_url = _iConfiguration.GetValue<string>("Urls:LoginRedirectUrl");
-                    return Json(actionResponse);
-                }
+                _logger.Information("User {UserId} ({UserName}) signed in from {IpAddress}", user.Id, user.UserName, ipAddress);
                 actionResponse.code = StatusCodes.Status200OK;
                 actionResponse.messages = new List<string>() { "Successfully logged In" };
-                actionResponse.redirect_url = _iConfiguration.GetValue<string>("Urls:LoginRedirectUrl");
-
+                actionResponse.redirect_url = Url.Action("Index", "Home");
                 return Json(actionResponse);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
+                HttpContext.Session.Clear(); // never leave a half-signed-in session behind
                 actionResponse.code = StatusCodes.Status417ExpectationFailed;
-                actionResponse.messages = new List<string>() { ex.Message };
+                actionResponse.messages = SafeErrorMessage.For(ex);
                 _logger.Error(ex, "Error in UserController/Login");
                 return Json(actionResponse);
             }
         }
+
+        [AllowAnonymous]
         [HttpPost]
         public IActionResult Logout()
         {
             try
             {
-                var sessionInfo = _iHttpContextAccesor.HttpContext?.Session.Keys.ToList();
-                string client_id = string.Empty;
-                string remarks = string.Empty;
-                string roleName = string.Empty;
-                if (sessionInfo != null && sessionInfo.Count > 0)
+                long userId = HttpContext.GetSessionUserId();
+                if (userId > 0)
                 {
-                    client_id = _iHttpContextAccesor.HttpContext?.Session.GetString("UserName")!;
-                    roleName = _iHttpContextAccesor.HttpContext?.Session.GetString("RoleName")!;
-                    remarks = "Logged out successfully by user: " + client_id + " || role: " + roleName + "";
-                    _logger.Information(remarks);
+                    _logger.Information("User {UserId} ({UserName}) logged out", userId, HttpContext.Session.GetString(SessionKeys.UserName));
                 }
-                _iHttpContextAccesor.HttpContext?.Session.SetString("UserName", "");
-                _iHttpContextAccesor.HttpContext?.Session.SetString("RoleName", "");
-                _iHttpContextAccesor.HttpContext?.Session.Clear();
-                return RedirectToAction("Login");
+                HttpContext.Session.Clear();
+                Response.Cookies.Delete(".AdminPanel.Session");
             }
             catch (Exception ex)
             {
-                _logger.Error(ex.ToString());
-                return RedirectToAction("Login");
+                _logger.Error(ex, "Error in UserController/Logout");
             }
+            return RedirectToAction("Login");
         }
+
+        /// <summary>Lets the page find out whether the session is still valid. Returns sessionExpired = true when it is NOT.</summary>
+        [AllowAnonymous]
+        [HttpGet]
         public IActionResult CheckSession()
         {
-            var userName = _iHttpContextAccesor.HttpContext?.Session.GetString("UserName");
-            if (!string.IsNullOrEmpty(userName))
-            {
-                return Json(new { sessionExpired = true });
-            }
-            return Json(new { sessionExpired = false });
+            bool sessionExpired = HttpContext.GetSessionUserId() <= 0;
+            return Json(new { sessionExpired });
         }
     }
 }

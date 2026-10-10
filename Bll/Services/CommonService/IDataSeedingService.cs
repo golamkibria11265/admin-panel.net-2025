@@ -1,436 +1,153 @@
-﻿using Microsoft.Data.SqlClient;
+using Dll.Data;
+using Dll.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Newtonsoft.Json;
+using System.Text.RegularExpressions;
 using Utility;
 
 namespace Bll.Services.CommonService
 {
     public interface IDataSeedingService
     {
-        void SeedData();
+        /// <summary>
+        /// Creates the first admin user, the admin role, the default menus and their permissions.
+        /// Does nothing if a user named "admin" already exists, so running it twice is safe.
+        /// </summary>
+        Task SeedDataAsync();
     }
+
     public class DataSeedingService : IDataSeedingService
     {
-        private readonly string _connectionString;
+        private const string AdminUserName = "admin";
+        private const string AdminRoleName = "admin";
+        private readonly DotNetContext _dotNetContext;
+        private readonly IConfiguration _configuration;
         private readonly Serilog.ILogger _logger;
-        public DataSeedingService
-        (
-            IConfiguration configuration,
-            Serilog.ILogger logger
-        )
+
+        public DataSeedingService(DotNetContext dotNetContext, IConfiguration configuration, Serilog.ILogger logger)
         {
-            _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+            _dotNetContext = dotNetContext;
+            _configuration = configuration;
             _logger = logger;
         }
-        public async void SeedData()
+
+        public async Task SeedDataAsync()
         {
-            try
+            if (await _dotNetContext.ApUsers.AnyAsync(u => u.UserName == AdminUserName))
             {
-                using (var connection = new SqlConnection(_connectionString))
-                {
-                    await connection.OpenAsync();
-
-                    string insertAdminQuery = @"
-                        INSERT INTO DotNet.dbo.ApUser 
-                        (UserId, UserName, FirstName, LastName, Email, Mobile, Password, IsPasswordReset, Type, Status, MetaData, OtpRequest, IsActiveDirectoryEnabled, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@UserId, @UserName, @FirstName, @LastName, @Email, @Mobile, @Password, @IsPasswordReset, @Type, @Status, @MetaData, @OtpRequest, @IsActiveDirectoryEnabled, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertAdminQuery, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@UserId", 0);
-                        insertCommand.Parameters.AddWithValue("@UserName", "admin");
-                        insertCommand.Parameters.AddWithValue("@FirstName", "admin");
-                        insertCommand.Parameters.AddWithValue("@LastName", "user");
-                        insertCommand.Parameters.AddWithValue("@Email", "admin@example.com");
-                        insertCommand.Parameters.AddWithValue("@Mobile", "1234567890");
-                        insertCommand.Parameters.AddWithValue("@Password", ProjectHelper.GenerateHashPassword("admin@1234"));
-                        insertCommand.Parameters.AddWithValue("@IsPasswordReset", 0);
-                        insertCommand.Parameters.AddWithValue("@Type", 1);
-                        insertCommand.Parameters.AddWithValue("@Status", 1);
-                        insertCommand.Parameters.AddWithValue("@MetaData", "{}");
-                        insertCommand.Parameters.AddWithValue("@OtpRequest", 0);
-                        insertCommand.Parameters.AddWithValue("@IsActiveDirectoryEnabled", 0);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertAdminRoleQuery = @"
-                        INSERT INTO DotNet.dbo.ApRole (Name, Description, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @Description, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertAdminRoleQuery, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@Name", "admin");
-                        insertCommand.Parameters.AddWithValue("@Description", "Administrator role with full permissions");
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertUserRoleQuery = @"
-                        INSERT INTO DotNet.dbo.ApUserRole (UserId, RoleId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@UserId, @RoleId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertUserRoleQuery, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@UserId", 1);
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-
-                    string insertAdminMenuQuery_09 = @"
-                        INSERT INTO DotNet.dbo.ApMenu (Url, Parent, Name, MenuOrder, IsAction, IsActive, Image, CreatedBy, CreatedDate)
-                        VALUES (@Url, @Parent, @Name, @MenuOrder, @IsAction, @IsActive, @Image, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertAdminMenuQuery_09, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Url", DBNull.Value);
-                        command.Parameters.AddWithValue("@Parent", DBNull.Value);
-                        command.Parameters.AddWithValue("@Name", "User Management");
-                        command.Parameters.AddWithValue("@MenuOrder", 0);
-                        command.Parameters.AddWithValue("@IsAction", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@Image", "dashboard.png");
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertAdminMenuQuery_10 = @"
-                        INSERT INTO DotNet.dbo.ApMenu (Url, Parent, Name, MenuOrder, IsAction, IsActive, Image, CreatedBy, CreatedDate)
-                        VALUES (@Url, @Parent, @Name, @MenuOrder, @IsAction, @IsActive, @Image, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertAdminMenuQuery_10, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Url", "home/index");
-                        command.Parameters.AddWithValue("@Parent", DBNull.Value);
-                        command.Parameters.AddWithValue("@Name", "Dashboard");
-                        command.Parameters.AddWithValue("@MenuOrder", 1);
-                        command.Parameters.AddWithValue("@IsAction", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@Image", "dashboard.png");
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertAdminMenuQuery_11 = @"
-                        INSERT INTO DotNet.dbo.ApMenu (Url, Parent, Name, MenuOrder, IsAction, IsActive, Image, CreatedBy, CreatedDate)
-                        VALUES (@Url, @Parent, @Name, @MenuOrder, @IsAction, @IsActive, @Image, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertAdminMenuQuery_11, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Url", "menu/index");
-                        command.Parameters.AddWithValue("@Parent", DBNull.Value);
-                        command.Parameters.AddWithValue("@Name", "Menu");
-                        command.Parameters.AddWithValue("@MenuOrder", 2);
-                        command.Parameters.AddWithValue("@IsAction", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@Image", "menu.png");
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertAdminMenuQuery_12 = @"
-                        INSERT INTO DotNet.dbo.ApMenu (Url, Parent, Name, MenuOrder, IsAction, IsActive, Image, CreatedBy, CreatedDate)
-                        VALUES (@Url, @Parent, @Name, @MenuOrder, @IsAction, @IsActive, @Image, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertAdminMenuQuery_12, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Url", "rolePermission/index");
-                        command.Parameters.AddWithValue("@Parent", DBNull.Value);
-                        command.Parameters.AddWithValue("@Name", "Role Permission");
-                        command.Parameters.AddWithValue("@MenuOrder", 3);
-                        command.Parameters.AddWithValue("@IsAction", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@Image", "menu.png");
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertAdminMenuQuery_13 = @"
-                        INSERT INTO DotNet.dbo.ApMenu (Url, Parent, Name, MenuOrder, IsAction, IsActive, Image, CreatedBy, CreatedDate)
-                        VALUES (@Url, @Parent, @Name, @MenuOrder, @IsAction, @IsActive, @Image, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertAdminMenuQuery_13, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Url", "menu/add");
-                        command.Parameters.AddWithValue("@Parent", DBNull.Value);
-                        command.Parameters.AddWithValue("@Name", "Add");
-                        command.Parameters.AddWithValue("@MenuOrder", 4);
-                        command.Parameters.AddWithValue("@IsAction", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@Image", "menu.png");
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertAdminMenuQuery_14 = @"
-                        INSERT INTO DotNet.dbo.ApMenu (Url, Parent, Name, MenuOrder, IsAction, IsActive, Image, CreatedBy, CreatedDate)
-                        VALUES (@Url, @Parent, @Name, @MenuOrder, @IsAction, @IsActive, @Image, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertAdminMenuQuery_14, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Url", "menu/edit");
-                        command.Parameters.AddWithValue("@Parent", DBNull.Value);
-                        command.Parameters.AddWithValue("@Name", "Edit");
-                        command.Parameters.AddWithValue("@MenuOrder", 5);
-                        command.Parameters.AddWithValue("@IsAction", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@Image", "menu.png");
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertAdminMenuQuery_15 = @"
-                        INSERT INTO DotNet.dbo.ApMenu (Url, Parent, Name, MenuOrder, IsAction, IsActive, Image, CreatedBy, CreatedDate)
-                        VALUES (@Url, @Parent, @Name, @MenuOrder, @IsAction, @IsActive, @Image, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertAdminMenuQuery_15, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Url", "menu/delete");
-                        command.Parameters.AddWithValue("@Parent", DBNull.Value);
-                        command.Parameters.AddWithValue("@Name", "Delete");
-                        command.Parameters.AddWithValue("@MenuOrder", 6);
-                        command.Parameters.AddWithValue("@IsAction", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@Image", "menu.png");
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertAdminMenuQuery_16 = @"
-                        INSERT INTO DotNet.dbo.ApMenu (Url, Parent, Name, MenuOrder, IsAction, IsActive, Image, CreatedBy, CreatedDate)
-                        VALUES (@Url, @Parent, @Name, @MenuOrder, @IsAction, @IsActive, @Image, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertAdminMenuQuery_16, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Url", "permission/index");
-                        command.Parameters.AddWithValue("@Parent", DBNull.Value);
-                        command.Parameters.AddWithValue("@Name", "Permission");
-                        command.Parameters.AddWithValue("@MenuOrder", 7);
-                        command.Parameters.AddWithValue("@IsAction", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@Image", "menu.png");
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-
-                    string insertPermissionQuery_09 = @"
-                        INSERT INTO DotNet.dbo.ApPermission (Name, MenuId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @MenuId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertPermissionQuery_09, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Name", "User Management");
-                        command.Parameters.AddWithValue("@MenuId", 0);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertPermissionQuery_10 = @"
-                        INSERT INTO DotNet.dbo.ApPermission (Name, MenuId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @MenuId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertPermissionQuery_10, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Name", "Dashboard");
-                        command.Parameters.AddWithValue("@MenuId", 1);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertPermissionQuery_11 = @"
-                        INSERT INTO DotNet.dbo.ApPermission (Name, MenuId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @MenuId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertPermissionQuery_11, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Name", "Menu");
-                        command.Parameters.AddWithValue("@MenuId", 2);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertPermissionQuery_12 = @"
-                        INSERT INTO DotNet.dbo.ApPermission (Name, MenuId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @MenuId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertPermissionQuery_12, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Name", "Role Permission");
-                        command.Parameters.AddWithValue("@MenuId", 3);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertPermissionQuery_13 = @"
-                        INSERT INTO DotNet.dbo.ApPermission (Name, MenuId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @MenuId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertPermissionQuery_13, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Name", "Add");
-                        command.Parameters.AddWithValue("@MenuId", 4);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertPermissionQuery_14 = @"
-                        INSERT INTO DotNet.dbo.ApPermission (Name, MenuId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @MenuId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertPermissionQuery_14, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Name", "Edit");
-                        command.Parameters.AddWithValue("@MenuId", 5);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertPermissionQuery_15 = @"
-                        INSERT INTO DotNet.dbo.ApPermission (Name, MenuId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @MenuId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertPermissionQuery_15, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Name", "Delete");
-                        command.Parameters.AddWithValue("@MenuId", 6);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-                    string insertPermissionQuery_16 = @"
-                        INSERT INTO DotNet.dbo.ApPermission (Name, MenuId, IsActive, CreatedBy, CreatedDate)
-                        VALUES (@Name, @MenuId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var command = new SqlCommand(insertPermissionQuery_16, connection))
-                    {
-                        command.Parameters.Clear();
-                        command.Parameters.AddWithValue("@Name", "permission");
-                        command.Parameters.AddWithValue("@MenuId", 7);
-                        command.Parameters.AddWithValue("@IsActive", 1);
-                        command.Parameters.AddWithValue("@CreatedBy", 1);
-                        await command.ExecuteNonQueryAsync();
-                    }
-
-
-                    string insertRolePermissionQuery_09 = @"
-                        INSERT INTO DotNet.dbo.ApRolePermission 
-                        (RoleId, PermissionId, IsActive, CreatedBy, CreatedDate) 
-                        VALUES (@RoleId, @PermissionId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertRolePermissionQuery_09, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@PermissionId", 0);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertRolePermissionQuery_10 = @"
-                        INSERT INTO DotNet.dbo.ApRolePermission 
-                        (RoleId, PermissionId, IsActive, CreatedBy, CreatedDate) 
-                        VALUES (@RoleId, @PermissionId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertRolePermissionQuery_10, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@PermissionId", 1);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertRolePermissionQuery_11 = @"
-                        INSERT INTO DotNet.dbo.ApRolePermission 
-                        (RoleId, PermissionId, IsActive, CreatedBy, CreatedDate) 
-                        VALUES (@RoleId, @PermissionId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertRolePermissionQuery_11, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@PermissionId", 2);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertRolePermissionQuery_12 = @"
-                        INSERT INTO DotNet.dbo.ApRolePermission 
-                        (RoleId, PermissionId, IsActive, CreatedBy, CreatedDate) 
-                        VALUES (@RoleId, @PermissionId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertRolePermissionQuery_12, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@PermissionId", 3);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertRolePermissionQuery_13 = @"
-                        INSERT INTO DotNet.dbo.ApRolePermission 
-                        (RoleId, PermissionId, IsActive, CreatedBy, CreatedDate) 
-                        VALUES (@RoleId, @PermissionId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertRolePermissionQuery_13, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@PermissionId", 4);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertRolePermissionQuery_14 = @"
-                        INSERT INTO DotNet.dbo.ApRolePermission 
-                        (RoleId, PermissionId, IsActive, CreatedBy, CreatedDate) 
-                        VALUES (@RoleId, @PermissionId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertRolePermissionQuery_14, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@PermissionId", 5);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertRolePermissionQuery_15 = @"
-                        INSERT INTO DotNet.dbo.ApRolePermission 
-                        (RoleId, PermissionId, IsActive, CreatedBy, CreatedDate) 
-                        VALUES (@RoleId, @PermissionId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertRolePermissionQuery_15, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@PermissionId", 6);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-
-                    string insertRolePermissionQuery_16 = @"
-                        INSERT INTO DotNet.dbo.ApRolePermission 
-                        (RoleId, PermissionId, IsActive, CreatedBy, CreatedDate) 
-                        VALUES (@RoleId, @PermissionId, @IsActive, @CreatedBy, GETUTCDATE())";
-                    using (var insertCommand = new SqlCommand(insertRolePermissionQuery_16, connection))
-                    {
-                        insertCommand.Parameters.AddWithValue("@RoleId", 1);
-                        insertCommand.Parameters.AddWithValue("@PermissionId", 7);
-                        insertCommand.Parameters.AddWithValue("@IsActive", 1);
-                        insertCommand.Parameters.AddWithValue("@CreatedBy", 1);
-                        await insertCommand.ExecuteNonQueryAsync();
-                    }
-                }
+                _logger.Information("Data seeding skipped: user '{UserName}' already exists", AdminUserName);
+                return;
             }
-            catch (Exception ex)
+
+            // The initial password is never stored in the code. Provide it once through the environment variable
+            // Seed__AdminPassword and change it after the first login.
+            string? adminPassword = _configuration["Seed:AdminPassword"];
+            if (string.IsNullOrEmpty(adminPassword) || adminPassword.Length < 12 ||
+                !Regex.IsMatch(adminPassword, "[A-Za-z]") || !Regex.IsMatch(adminPassword, "[0-9]"))
             {
-                _logger.Information("Data Seeding Exception: " + JsonConvert.SerializeObject(ex));
+                throw new InvalidOperationException(
+                    "Set Seed:AdminPassword (environment variable Seed__AdminPassword) to at least 12 characters " +
+                    "containing letters and digits before seeding.");
             }
+
+            DateTime now = DateTime.UtcNow;
+            await using var transaction = await _dotNetContext.Database.BeginTransactionAsync();
+
+            var admin = new ApUser
+            {
+                UserId = 0,
+                UserName = AdminUserName,
+                FirstName = "admin",
+                LastName = "user",
+                Email = "admin@example.com",
+                Password = ProjectHelper.GenerateHashPassword(adminPassword),
+                IsPasswordReset = true, // must be changed after the first login
+                Type = 1,
+                Status = 1,
+                MetaData = "{}",
+                OtpRequest = false,
+                IsActiveDirectoryEnabled = false,
+                IsActive = 1,
+                CreatedBy = 1,
+                CreatedDate = now
+            };
+            var adminRole = new ApRole
+            {
+                Name = AdminRoleName,
+                Description = "Administrator role with full permissions",
+                IsActive = 1,
+                CreatedBy = 1,
+                CreatedDate = now
+            };
+            _dotNetContext.ApUsers.Add(admin);
+            _dotNetContext.ApRoles.Add(adminRole);
+            await _dotNetContext.SaveChangesAsync();
+
+            _dotNetContext.ApUserRoles.Add(new ApUserRole { UserId = admin.Id, RoleId = adminRole.Id, IsActive = 1, CreatedBy = 1, CreatedDate = now });
+
+            // Menus. Rows with IsAction = 1 are buttons (not shown in the sidebar) but still need a permission.
+            ApMenu NewMenu(string name, string? url, int order, int isAction = 0, string? image = null) => new()
+            {
+                Name = name,
+                Url = url,
+                MenuOrder = order,
+                IsAction = isAction,
+                IsActive = 1,
+                Image = image,
+                CreatedBy = 1,
+                CreatedDate = now
+            };
+            var dashboard = NewMenu("Dashboard", "home/index", 1, image: "dashboard.png");
+            var userManagement = NewMenu("User Management", null, 2, image: "dashboard.png");
+            _dotNetContext.ApMenus.AddRange(dashboard, userManagement);
+            await _dotNetContext.SaveChangesAsync();
+
+            var menu = NewMenu("Menu", "menu/index", 1);
+            var rolePermission = NewMenu("Role Permission", "rolePermission/index", 2);
+            var permission = NewMenu("Permission", "permission/index", 3);
+            var createUser = NewMenu("Create User", "user/signup", 4);
+            foreach (var child in new[] { menu, rolePermission, permission, createUser })
+            {
+                child.Parent = userManagement.Id;
+            }
+            _dotNetContext.ApMenus.AddRange(menu, rolePermission, permission, createUser);
+            await _dotNetContext.SaveChangesAsync();
+
+            var add = NewMenu("Add", "menu/add", 1, isAction: 1);
+            var edit = NewMenu("Edit", "menu/edit", 2, isAction: 1);
+            var delete = NewMenu("Delete", "menu/delete", 3, isAction: 1);
+            foreach (var action in new[] { add, edit, delete })
+            {
+                action.Parent = menu.Id;
+            }
+            _dotNetContext.ApMenus.AddRange(add, edit, delete);
+            await _dotNetContext.SaveChangesAsync();
+
+            // One permission per menu, all granted to the admin role.
+            var allMenus = new[] { dashboard, userManagement, menu, rolePermission, permission, createUser, add, edit, delete };
+            var permissions = allMenus.Select(m => new ApPermission
+            {
+                Name = m.Name,
+                MenuId = m.Id,
+                IsActive = 1,
+                CreatedBy = 1,
+                CreatedDate = now
+            }).ToList();
+            _dotNetContext.ApPermissions.AddRange(permissions);
+            await _dotNetContext.SaveChangesAsync();
+
+            _dotNetContext.ApRolePermissions.AddRange(permissions.Select(p => new ApRolePermission
+            {
+                RoleId = adminRole.Id,
+                PermissionId = p.Id,
+                IsActive = 1,
+                CreatedBy = 1,
+                CreatedDate = now
+            }));
+            await _dotNetContext.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+            _logger.Information("Data seeding completed: admin user, role, {MenuCount} menus and permissions created", allMenus.Length);
         }
     }
 }

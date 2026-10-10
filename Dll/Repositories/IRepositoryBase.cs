@@ -1,4 +1,4 @@
-﻿using Dll.Data;
+using Dll.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
 using System.Text;
@@ -131,9 +131,16 @@ namespace Dll.Repositories
             var result = await FindByCondition(expression);
             return result.FirstOrDefault();
         }
+        /// <summary>
+        /// Returns the last matching row by primary key. EF Core cannot translate LastOrDefault without an
+        /// ORDER BY, so the query is ordered by the "Id" key descending and the first row is taken.
+        /// </summary>
         public virtual async Task<T?> FindLastOrDefault(Expression<Func<T, bool>> expression)
         {
-            return await _dotNetContext.Set<T>().AsNoTracking().LastOrDefaultAsync(expression);
+            return await _dotNetContext.Set<T>().AsNoTracking()
+                .Where(expression)
+                .OrderByDescending(e => EF.Property<object>(e, "Id"))
+                .FirstOrDefaultAsync();
         }
         public virtual async Task<T?> GetById(int id)
         {

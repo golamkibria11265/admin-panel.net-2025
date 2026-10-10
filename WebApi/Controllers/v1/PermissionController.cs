@@ -1,10 +1,13 @@
-﻿using Bll.Services.ApService;
+using Bll.Services.ApService;
 using Microsoft.AspNetCore.Mvc;
 using Utility;
 using Utility.Models.ResponseModels;
+using WebApi.Extensions;
+using WebApi.Filters;
 
 namespace WebApi.Controllers.v1
 {
+    // Sign-in is enforced globally by CheckSessionWithRedirect (see Program.cs).
     public class PermissionController : Controller
     {
         private readonly IPermissionService _iPermissionService;
@@ -14,10 +17,16 @@ namespace WebApi.Controllers.v1
             _iPermissionService = iPermissionService;
             _logger = logger;
         }
+
+        [HasPermission]
         public IActionResult Index()
         {
             return View();
         }
+
+        // Changes data, so POST only (protected by the global anti-forgery check).
+        [HasPermission("Permission/Index")]
+        [HttpPost]
         public async Task<IActionResult> SyncPermissionList()
         {
             ActionResponse actionResponse = new();
@@ -31,7 +40,7 @@ namespace WebApi.Controllers.v1
             catch (Exception ex)
             {
                 actionResponse.code = StatusCodes.Status417ExpectationFailed;
-                actionResponse.messages = new List<string>() { ex.Message };
+                actionResponse.messages = SafeErrorMessage.For(ex);
                 _logger.Error(ex, "Error in PermissionController/Sync");
                 return Json(actionResponse);
             }

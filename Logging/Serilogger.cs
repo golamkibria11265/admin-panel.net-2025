@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Serilog;
 using System.Reflection;
 
@@ -20,8 +20,13 @@ namespace Common.Logging
                 .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", Serilog.Events.LogEventLevel.Error)
                 .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Error)
                 .WriteTo.Console(outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-                .WriteTo.File(path: $"{logPath}.log", rollingInterval: RollingInterval.Hour, outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-                .WriteTo.Elasticsearch(new Serilog.Sinks.Elasticsearch.ElasticsearchSinkOptions(new Uri(elasticUri!))
+                .WriteTo.File(path: Path.Combine(string.IsNullOrEmpty(logPath) ? "logs" : logPath, "webapi-.log"), rollingInterval: RollingInterval.Hour, outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+                .Enrich.WithProperty("Environment", environmentName);
+
+            // Elasticsearch is optional: only configured when a URI is provided (credentials from environment variables).
+            if (!string.IsNullOrEmpty(elasticUri))
+            {
+                loggerConfig.WriteTo.Elasticsearch(new Serilog.Sinks.Elasticsearch.ElasticsearchSinkOptions(new Uri(elasticUri))
                 {
                     IndexFormat = $"applogs-{Assembly.GetExecutingAssembly().GetName().Name?.ToLower().Replace(".", "-")}-{environmentName.ToLower().Replace(".", "-")}-logs-{DateTime.UtcNow:yyyy-MM}",
                     AutoRegisterTemplate = true,
@@ -30,12 +35,12 @@ namespace Common.Logging
                     ModifyConnectionSettings = x =>
                     {
                         x.BasicAuthentication(elasticUserName, elasticPassword);
-                        x.ServerCertificateValidationCallback((sender, cert, chain, sslPolicyErrors) => true);
+                        // TLS certificate validation stays ON. If Elasticsearch uses an internal CA, install that
+                        // CA certificate on the server instead of disabling validation.
                         return x;
                     }
-                })
-                .Enrich.WithProperty("Environment", environmentName)
-                .ReadFrom.Configuration(configuration);
+                });
+            }
         }
     }
 }

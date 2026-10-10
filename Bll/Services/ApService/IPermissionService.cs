@@ -1,4 +1,4 @@
-﻿using Dll.Data.Entities;
+using Dll.Data.Entities;
 using Dll.UnitOfWorks;
 using Microsoft.AspNetCore.Http;
 using System;
@@ -37,19 +37,31 @@ namespace Bll.Services.ApService
             var permissionListToAdd = menuListToAdd.Select(x => new ApPermission
             {
                 Name = x.Name,
-                MenuId = x.Id
+                MenuId = x.Id,
+                IsActive = 1,
+                CreatedDate = DateTime.UtcNow
             }).ToList();
-            var permissionListUpdate = permissionList.Where(permission => menuList.Any(menu => menu.Id == permission.MenuId)).ToList();
-            foreach (var permission in permissionListUpdate)
+            // Only permissions whose menu name changed need an update.
+            var permissionListUpdate = new List<ApPermission>();
+            foreach (var permission in permissionList)
             {
                 var menu = menuList.FirstOrDefault(x => x.Id == permission.MenuId);
-                if (menu != null)
+                if (menu != null && permission.Name != menu.Name)
                 {
                     permission.Name = menu.Name;
+                    permission.UpdatedDate = DateTime.UtcNow;
+                    permissionListUpdate.Add(permission);
                 }
             }
             var permissionListToDelete = permissionList.Where(permission => !menuList.Any(menu => menu.Id == permission.MenuId)).ToList();
 
+            if (permissionListToDelete.Any())
+            {
+                // Also remove the role assignments of permissions whose menu no longer exists.
+                var deletedIds = permissionListToDelete.Select(p => p.Id).ToList();
+                var orphanRolePermissions = await _unitOfWork.RolePermissionRepository.FindByCondition(x => deletedIds.Contains(x.PermissionId));
+                if (orphanRolePermissions.Any()) await _unitOfWork.RolePermissionRepository.DeleteRange(orphanRolePermissions);
+            }
             if (permissionListToAdd.Any()) await _unitOfWork.PermissionRepository.CreateRange(permissionListToAdd);
             if (permissionListUpdate.Any()) await _unitOfWork.PermissionRepository.UpdateRange(permissionListUpdate);
             if (permissionListToDelete.Any()) await _unitOfWork.PermissionRepository.DeleteRange(permissionListToDelete);

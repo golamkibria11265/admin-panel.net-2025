@@ -1,4 +1,4 @@
-﻿using Bll.Services.CommonService;
+using Bll.Services.CommonService;
 using Dll.Data;
 using Dll.Data.Entities;
 using Dll.Models.RequestModels;
@@ -39,7 +39,8 @@ namespace Bll.Services.ApService
 
         public async Task<ApiResponse> AddOrEditMenu(MenuViewModel menuViewModel)
         {
-            _logger.Information("IMenuService->AddOrEditMenu->Request: " + JsonConvert.SerializeObject(menuViewModel));
+            _logger.Information("IMenuService->AddOrEditMenu->Request: Id={Id}, Name={Name}, Url={Url}, Parent={Parent}, HasImage={HasImage}",
+                menuViewModel.Id, menuViewModel.Name, menuViewModel.Url, menuViewModel.Parent, menuViewModel.Image != null);
             ApiResponse apiResponse = new();
             bool result = false;
             if (menuViewModel.Id > 0)
@@ -70,32 +71,47 @@ namespace Bll.Services.ApService
             menu = await _unitOfWork.MenuRepository.GetById(menuViewModel.Id);
             if (menu == null)
             {
-                throw new CustomApplicationException("Menu not found: ", StatusCodes.Status204NoContent);
+                throw new CustomApplicationException("Menu not found", StatusCodes.Status404NotFound);
             }
+            // Names must be unique among menus with the same parent (e.g. "Add" may exist under several pages).
+            var duplicate = await _unitOfWork.MenuRepository.GetByCondition(x => x.Name == menuViewModel.Name && x.Parent == menu.Parent && x.Id != menu.Id);
+            if (duplicate != null)
+            {
+                throw new CustomApplicationException("A menu with this name already exists at this level", StatusCodes.Status409Conflict);
+            }
+            string? oldImage = menu.Image;
             menu.Name = menuViewModel.Name;
             menu.Url = menuViewModel.Url;
             menu.MenuOrder = menuViewModel.MenuOrder;
             menu.IsAction = menuViewModel.IsAction == true ? 1 : 0;
+            menu.UpdatedDate = DateTime.UtcNow;
             if (menuViewModel.Image != null)
             {
+                // Throws CustomApplicationException for files that are not allowed; nothing is saved then.
                 menu.Image = await _fileWriterService.UploadImage(menuViewModel.Image);
             }
             await _unitOfWork.MenuRepository.CustomMethodToUpdateMenuByIdAsync(menu);
             await _unitOfWork.CompleteAsync();
+            if (menuViewModel.Image != null && !string.IsNullOrEmpty(oldImage) && oldImage != menu.Image)
+            {
+                _fileWriterService.DeleteImageByFileName(oldImage);
+            }
         }
         private async Task AddMenu(MenuViewModel menuViewModel)
         {
             ApMenu? menu = new();
-            menu = await _unitOfWork.MenuRepository.GetByCondition(x => x.Name == menuViewModel.Name);
+            int? parentId = menuViewModel.Parent > 0 ? menuViewModel.Parent : null;
+            menu = await _unitOfWork.MenuRepository.GetByCondition(x => x.Name == menuViewModel.Name && x.Parent == parentId);
             if (menu != null)
             {
-                throw new CustomApplicationException("Menu already exist: ", StatusCodes.Status409Conflict);
+                throw new CustomApplicationException("A menu with this name already exists at this level", StatusCodes.Status409Conflict);
             }
             ApMenu menuModel = new();
             menuModel.Name = menuViewModel.Name;
             menuModel.Url = menuViewModel.Url;
             menuModel.MenuOrder = menuViewModel.MenuOrder;
             menuModel.IsAction = menuViewModel.IsAction == true ? 1 : 0;
+            menuModel.CreatedDate = DateTime.UtcNow;
             if (menuViewModel.Parent > 0)
             {
                 menuModel.Parent = menuViewModel.Parent;
@@ -114,12 +130,32 @@ namespace Bll.Services.ApService
             {
                 throw new CustomApplicationException("Menu is not found", StatusCodes.Status404NotFound);
             }
-            if (!string.IsNullOrEmpty(menu.Image))
+            // Do not leave sub-menus pointing to a parent that no longer exists.
+            var children = await GetNestedChildren(id);
+            if (children.Any())
             {
-                _fileWriterService.DeleteImageByFileName(menu.Image);
+                throw new CustomApplicationException("This menu has sub-menus. Delete or move them first.", StatusCodes.Status409Conflict);
             }
+            // Remove the menu's permissions and the role assignments of those permissions as well.
+            var permissions = await _unitOfWork.PermissionRepository.FindByCondition(x => x.MenuId == id);
+            if (permissions.Any())
+            {
+                var permissionIds = permissions.Select(p => p.Id).ToList();
+                var rolePermissions = await _unitOfWork.RolePermissionRepository.FindByCondition(x => permissionIds.Contains(x.PermissionId));
+                if (rolePermissions.Any())
+                {
+                    await _unitOfWork.RolePermissionRepository.DeleteRange(rolePermissions);
+                }
+                await _unitOfWork.PermissionRepository.DeleteRange(permissions);
+            }
+            string? image = menu.Image;
             await _unitOfWork.MenuRepository.CustomMethodToDeleteMenuByIdAsync(menu);
             await _unitOfWork.CompleteAsync();
+            // Delete the file only after the database change succeeded.
+            if (!string.IsNullOrEmpty(image))
+            {
+                _fileWriterService.DeleteImageByFileName(image);
+            }
             ApiResponse apiResponse = new();
             apiResponse.code = StatusCodes.Status200OK;
             apiResponse.messages = new List<string>() { "Success" };

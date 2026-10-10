@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using RabbitMQ.Client;
 using System.Text;
@@ -11,7 +11,7 @@ namespace Utility.Services.RabbitMqService
     }
     public class RabbitMQMessageSender : IRabbitMQMessageSender
     {
-        private IConfiguration _iConfiguration;
+        private readonly IConfiguration _iConfiguration;
         public RabbitMQMessageSender(IConfiguration iConfiguration)
         {
             _iConfiguration = iConfiguration;
@@ -25,9 +25,9 @@ namespace Utility.Services.RabbitMqService
                 Password = _iConfiguration.GetValue<string>("RabbitMQ:Password"),
                 UserName = _iConfiguration.GetValue<string>("RabbitMQ:UserName")
             };
-            var _connection = factory.CreateConnection();
-
-            using var channel = _connection.CreateModel();
+            // Connection and channel are disposed after each message (previously the connection leaked).
+            using var connection = factory.CreateConnection();
+            using var channel = connection.CreateModel();
             channel.QueueDeclare(queueName, false, false, false, null);
             var jsonObject = JsonConvert.SerializeObject(message);
             var body = Encoding.UTF8.GetBytes(jsonObject);

@@ -1,20 +1,15 @@
-﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Text;
-using System.Threading.Tasks;
 using Utility;
 using Utility.Exceptions;
 
 namespace WebApi.Middlewares
 {
+    /// <summary>
+    /// Optional JSON exception handler for API-style endpoints (not registered by default; Program.cs uses
+    /// /Home/Error for the MVC pages). Register with app.builtinExceptionHandler() if needed.
+    /// </summary>
     public static class ExceptionMiddleware
     {
         public static void builtinExceptionHandler(this IApplicationBuilder app)
@@ -22,54 +17,52 @@ namespace WebApi.Middlewares
             app.UseExceptionHandler(error => {
                 error.Run(async context =>
                 {
-                    var exception = context.Features.Get<IExceptionHandlerFeature>();
-                    var contextHttp = context.Features.Get<HttpRequestFeature>();
+                    var feature = context.Features.Get<IExceptionHandlerFeature>();
+                    Exception? exception = feature?.Error; // check the exception itself, not the feature object
+                    var environment = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
                     var code = HttpStatusCode.InternalServerError;
-                    var error = new ApiErrorResponse();
-                    error.code = (int)code;
-                    string? environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+                    var error = new ApiErrorResponse
+                    {
+                        code = (int)code,
+                        messages = new List<string> { "A server error occured" }
+                    };
+                    if (exception != null && environment.IsDevelopment())
+                    {
+                        // Details only in Development; never send internal messages or stack traces in production.
+                        error.messages = new List<string> { exception.Message };
+                        error.details = exception.StackTrace;
+                    }
+                    switch (exception)
+                    {
+                        case CustomTransactionException custom:
+                            code = HttpStatusCode.UnprocessableEntity;
+                            error.code = custom.Code;
+                            error.messages = new List<string> { custom.Message };
+                            break;
+                        case CustomApplicationException custom:
+                            code = HttpStatusCode.UnprocessableEntity;
+                            error.code = (int)code;
+                            error.messages = new List<string> { custom.Message };
+                            break;
+                        case DeviceChangeException:
+                            code = HttpStatusCode.UnavailableForLegalReasons;
+                            error.code = StatusCodes.Status451UnavailableForLegalReasons;
+                            error.messages = new List<string> { "Device Change, A new OTP send your mobile device" };
+                            break;
+                        case UnauthorizedAccessException:
+                            code = HttpStatusCode.Unauthorized;
+                            error.code = StatusCodes.Status401Unauthorized;
+                            error.messages = new List<string> { "Unauthorized Access" };
+                            break;
+                    }
                     if (exception != null)
                     {
-                        if (environment == "Development")
-                        {
-                            error.messages = new List<string> { exception.Error.Message };
-                            error.details = exception.Error.StackTrace;
-                        }
-                        else
-                        {
-                            error.messages = new List<string> { "A server error occured" };
-                            error.details = exception.Error.Message;
-                        }
+                        var logger = context.RequestServices.GetRequiredService<Serilog.ILogger>();
+                        logger.Error(exception, "Unhandled exception for {Path}", context.Request.Path);
                     }
-                    if (exception is CustomApplicationException)
-                    {
-                        error.code = (int)HttpStatusCode.UnprocessableEntity;
-                        code = HttpStatusCode.UnprocessableEntity;
-                    }
-                    else if (exception is CustomTransactionException)
-                    {
-                        code = HttpStatusCode.UnprocessableEntity;
-                        var custom = (CustomTransactionException)exception;
-                        error.code = custom.Code;
-                    }
-                    else if (exception is DeviceChangeException)
-                    {
-                        error.code = StatusCodes.Status451UnavailableForLegalReasons;
-                        error.messages = new List<string> { "Device Change, A new OTP send your mobile device" };
-                        error.details = exception.Error.Message;
-                        code = HttpStatusCode.UnavailableForLegalReasons;
-                    }
-                    else if (exception is UnauthorizedAccessException)
-                    {
-                        error.code = StatusCodes.Status401Unauthorized;
-                        error.messages = new List<string> { "Unauthorized Access" };
-                        error.details = exception.Error.Message;
-                        code = HttpStatusCode.Unauthorized;
-                    }
-                    var result = JsonConvert.SerializeObject(error);
                     context.Response.ContentType = "application/json";
                     context.Response.StatusCode = (int)code;
-                    await context.Response.WriteAsync(result);
+                    await context.Response.WriteAsync(JsonConvert.SerializeObject(error));
                 });
             });
         }

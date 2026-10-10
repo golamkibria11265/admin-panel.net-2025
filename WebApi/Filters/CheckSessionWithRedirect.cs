@@ -1,101 +1,76 @@
-﻿using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc.Filters;
+using Bll.Services.ApService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Net;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Utility.Models.ResponseModels;
+using WebApi.Extensions;
 
 namespace WebApi.Filters
 {
-    public class CheckSessionWithRedirect : Attribute, IActionFilter
+    /// <summary>
+    /// Global filter (registered in Program.cs): every action requires a signed-in, active user
+    /// unless it is marked with [AllowAnonymous].
+    /// </summary>
+    public class CheckSessionWithRedirect : IAsyncActionFilter
     {
-        private readonly IHttpContextAccessor _iHttpContextAccessor;
+        private const string SessionExpiredMessage = "Session expired! Please log in again using your credential!";
+        private readonly IAccessControlService _accessControlService;
         private readonly Serilog.ILogger _logger;
-        public CheckSessionWithRedirect(IHttpContextAccessor iHttpContextAccessor, Serilog.ILogger logger)
+
+        public CheckSessionWithRedirect(IAccessControlService accessControlService, Serilog.ILogger logger)
         {
-            _iHttpContextAccessor = iHttpContextAccessor;
+            _accessControlService = accessControlService;
             _logger = logger;
         }
-        public void OnActionExecuted(ActionExecutedContext context)
-        {
-            try
-            {
-                Controller? controller = context.Controller as Controller;
-                if (controller == null)
-                {
-                    context.Result = new RedirectToRouteResult(new RouteValueDictionary(new
-                    {
-                        action = "Login",
-                        controller = "User"
-                    }));
-                    return;
-                }
-                if (context.Exception != null)
-                {
-                    context.ExceptionHandled = true;
-                    controller.TempData["SessionExpired"] = context.Exception.Message.ToString();
-                    context.Result = new RedirectToRouteResult
-                       (
-                       new RouteValueDictionary(new
-                       {
-                           action = "Login",
-                           controller = "User"
-                       }));
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.Error(ex.ToString());
-                context.Result = new RedirectToRouteResult(new RouteValueDictionary(new
-                {
-                    action = "Login",
-                    controller = "User"
-                }));
-            }
-        }
 
-        public void OnActionExecuting(ActionExecutingContext context)
+        public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
         {
+            if (context.ActionDescriptor.EndpointMetadata.OfType<IAllowAnonymous>().Any())
+            {
+                await next();
+                return;
+            }
+
+            var httpContext = context.HttpContext;
+            long userId = httpContext.GetSessionUserId();
+            bool isAuthenticated = false;
             try
             {
-                var sessionInfo = _iHttpContextAccessor.HttpContext?.Session.Keys.ToList();
-                Controller? controller = context.Controller as Controller;
-                if (controller == null)
-                {
-                    context.Result = new RedirectToRouteResult(new RouteValueDictionary(new
-                    {
-                        action = "Login",
-                        controller = "User"
-                    }));
-                    return;
-                }
-                if (sessionInfo == null)
-                {
-                    controller.TempData["SessionExpired"] = "Session Expired! Please log in again using your credential!";
-                    context.Result = new RedirectToRouteResult(new RouteValueDictionary(new
-                    {
-                        action = "Login",
-                        controller = "User"
-                    }));
-                    return;
-                }
-                if (sessionInfo.Count == 0)
-                {
-                    controller.TempData["SessionExpired"] = "Session Expired! Please log in again using your credential!";
-                    context.Result = new RedirectToRouteResult(new RouteValueDictionary(new
-                    {
-                        action = "Login",
-                        controller = "User"
-                    }));
-                }
+                isAuthenticated = userId > 0 && await _accessControlService.IsUserActiveAsync(userId);
             }
             catch (Exception ex)
             {
-                _logger.Error(ex.ToString());
-                context.Result = new RedirectToRouteResult(new RouteValueDictionary(new
-                {
-                    action = "Login",
-                    controller = "User"
-                }));
+                _logger.Error(ex, "Error while validating the session");
             }
+
+            if (isAuthenticated)
+            {
+                await next();
+                return;
+            }
+
+            bool hadSession = httpContext.Request.Cookies.ContainsKey(".AdminPanel.Session");
+            // Not signed in, session expired, or the user was disabled: drop whatever is left in the session.
+            httpContext.Session.Clear();
+
+            if (httpContext.Request.IsAjaxRequest())
+            {
+                context.Result = new JsonResult(new ActionResponse
+                {
+                    code = StatusCodes.Status401Unauthorized,
+                    session_expired = true,
+                    redirect_url = $"{httpContext.Request.PathBase}/User/Login",
+                    messages = new List<string> { SessionExpiredMessage }
+                });
+                return;
+            }
+
+            // Show "session expired" only to someone who actually had a session (not to first-time visitors).
+            if (hadSession && context.Controller is Controller controller)
+            {
+                controller.TempData["SessionExpired"] = SessionExpiredMessage;
+            }
+            context.Result = new RedirectToActionResult("Login", "User", null);
         }
     }
 }

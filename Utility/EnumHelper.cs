@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 namespace Utility
 {
     public static class EnumHelper
@@ -100,7 +100,8 @@ namespace Utility
             jpeg,
             png,
             PDF,
-            unknown
+            unknown,
+            gif
         }
         public enum Roles
         {

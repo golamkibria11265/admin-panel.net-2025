@@ -1,4 +1,4 @@
-﻿using Dll.Data.Entities;
+using Dll.Data.Entities;
 using Dll.Models.ViewModels;
 using Dll.UnitOfWorks;
 using Microsoft.AspNetCore.Http;
@@ -125,27 +125,42 @@ namespace Bll.Services.ApService
                     apiResponse.messages = new List<string> { "Invalid permission selection" };
                     return apiResponse;
                 }
-                var flatRolePermissionViewList = GetFlat(rolePermissionNestedViewModel.RolePermissionNestedViewModelList);
-                if (!flatRolePermissionViewList.Any())
+                int roleId = rolePermissionNestedViewModel.RoleId;
+                // The role must exist (a brand-new role has no permissions yet, which is fine).
+                var role = await _unitOfWork.RoleRepository.FindFirstOrDefault(x => x.Id == roleId);
+                if (roleId <= 0 || role == null)
                 {
-                    apiResponse.code = StatusCodes.Status204NoContent;
-                    apiResponse.messages = new List<string> { "No content is selected" };
-                    return apiResponse;
-                }
-                var rolePermissionListFromUi = flatRolePermissionViewList.Select(x => new ApRolePermission
-                {
-                    RoleId = rolePermissionNestedViewModel.RoleId,
-                    PermissionId = x.PermissionId
-                });
-                var rolePermissionListFromDb = await _unitOfWork.RolePermissionRepository.FindByCondition(x => x.RoleId == rolePermissionNestedViewModel.RoleId);
-                if (!rolePermissionListFromDb.Any())
-                {
-                    apiResponse.code = StatusCodes.Status204NoContent;
+                    apiResponse.code = StatusCodes.Status400BadRequest;
                     apiResponse.messages = new List<string> { "Invalid selected role" };
                     return apiResponse;
                 }
-                var rolePermissionListToAdd = rolePermissionListFromUi.Where(x => !rolePermissionListFromDb.Any(y => y.RoleId == x.RoleId && y.PermissionId == x.PermissionId)).ToList();
-                var rolePermissionListToDelete = rolePermissionListFromDb.Where(x => !rolePermissionListFromUi.Any(y => y.RoleId == x.RoleId && y.PermissionId == x.PermissionId)).ToList();
+                // Selecting nothing is allowed: it removes all permissions from the role.
+                var selectedPermissionIds = GetFlat(rolePermissionNestedViewModel.RolePermissionNestedViewModelList)
+                    .Select(x => x.PermissionId)
+                    .Distinct()
+                    .ToList();
+                // Only permissions that really exist may be granted (ignore tampered ids).
+                var existingPermissionIds = (await _unitOfWork.PermissionRepository.FindAll()).Select(p => p.Id).ToHashSet();
+                if (selectedPermissionIds.Any(id => !existingPermissionIds.Contains(id)))
+                {
+                    apiResponse.code = StatusCodes.Status400BadRequest;
+                    apiResponse.messages = new List<string> { "Invalid permission selection" };
+                    return apiResponse;
+                }
+                var rolePermissionListFromDb = await _unitOfWork.RolePermissionRepository.FindByCondition(x => x.RoleId == roleId);
+                var rolePermissionListToAdd = selectedPermissionIds
+                    .Where(permissionId => !rolePermissionListFromDb.Any(y => y.PermissionId == permissionId))
+                    .Select(permissionId => new ApRolePermission
+                    {
+                        RoleId = roleId,
+                        PermissionId = permissionId,
+                        IsActive = 1,
+                        CreatedDate = DateTime.UtcNow
+                    })
+                    .ToList();
+                var rolePermissionListToDelete = rolePermissionListFromDb
+                    .Where(x => !selectedPermissionIds.Contains(x.PermissionId))
+                    .ToList();
                 if (rolePermissionListToAdd.Any()) await _unitOfWork.RolePermissionRepository.CreateRange(rolePermissionListToAdd);
                 if (rolePermissionListToDelete.Any()) await _unitOfWork.RolePermissionRepository.DeleteRange(rolePermissionListToDelete);
                 await _unitOfWork.CompleteAsync();
@@ -155,8 +170,7 @@ namespace Bll.Services.ApService
             }
             catch (Exception ex)
             {
-                _logger.Error("Error Message: {Message}", ex.Message);
-                _logger.Error("Stack Trace: {StackTrace}", JsonConvert.SerializeObject(ex.StackTrace));
+                _logger.Error(ex, "Error while updating role permissions");
 
                 apiResponse.code = StatusCodes.Status500InternalServerError;    
                 apiResponse.messages = new List<string> { "Something went wrong" };

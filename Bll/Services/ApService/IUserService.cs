@@ -1,4 +1,4 @@
-﻿using Bll.Services.CommonService;
+using Bll.Services.CommonService;
 using Dll.Data;
 using Dll.Data.Entities;
 using Dll.Models.ViewModels;
@@ -13,7 +13,7 @@ namespace Bll.Services.ApService
 {
     public interface IUserService
     {
-        Task<ApiResponse> IsFirstAdminExist(string userName, string password);
+        Task<ApUser?> ValidateCredentialsAsync(string userName, string password);
         Task<ApiResponse> GetCurrentUserInfo();
         Task<ApiResponse> IsUsernameTaken(string userName);
         Task<ApiResponse> AddUser(UserViewModel userInfoViewModel);
@@ -40,21 +40,41 @@ namespace Bll.Services.ApService
             _iHttpContextAccesor = iHttpContextAccesor;
             _dotNetContext = dotNetContext;
         }
-        public async Task<ApiResponse> IsFirstAdminExist(string userName, string password)
+        /// <summary>
+        /// Returns the user when the user name and password are correct and the account is active; otherwise null.
+        /// Never says WHICH part was wrong (prevents user name enumeration).
+        /// </summary>
+        public async Task<ApUser?> ValidateCredentialsAsync(string userName, string password)
         {
-            ApiResponse apiResponse = new();
-            var userInfo = await _unitOfWork.UserRepository.FindFirstOrDefault(x => x.UserName == userName);
+            if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrEmpty(password))
+            {
+                return null;
+            }
+            // Read straight from the database (not the cache) and tracked, so an old hash can be upgraded below.
+            var userInfo = await _dotNetContext.ApUsers.FirstOrDefaultAsync(x => x.UserName == userName);
             if (userInfo == null)
             {
-                throw new CustomApplicationException("Invalid user name");
+                // Spend the same time as a real check so response time does not reveal unknown user names.
+                ProjectHelper.VerifyPassword(ProjectHelper.DummyPasswordHash, password);
+                return null;
             }
             if (!ProjectHelper.VerifyPassword(userInfo.Password ?? string.Empty, password))
             {
-                throw new CustomApplicationException("Invalid password");
+                return null;
             }
-            apiResponse.code = StatusCodes.Status200OK;
-            apiResponse.messages = new List<string>() { "Success" };
-            return apiResponse;
+            if (!UserStatusHelper.IsActive(userInfo.IsActive))
+            {
+                _logger.Warning("Login refused for inactive user {UserId}", userInfo.Id);
+                return null;
+            }
+            if (ProjectHelper.PasswordNeedsRehash(userInfo.Password))
+            {
+                // Transparently upgrade old 10,000-iteration hashes to the current work factor.
+                userInfo.Password = ProjectHelper.GenerateHashPassword(password);
+                userInfo.UpdatedDate = DateTime.UtcNow;
+                await _dotNetContext.SaveChangesAsync();
+            }
+            return userInfo;
         }
         public async Task<ApiResponse> GetCurrentUserInfo()
         {
@@ -76,7 +96,7 @@ namespace Bll.Services.ApService
         public async Task<ApiResponse> IsUsernameTaken(string userName)
         {
             ApiResponse apiResponse = new();
-            var user = await _unitOfWork.UserRepository.FindFirstOrDefault(x => x.UserName == userName);
+            var user = await _dotNetContext.ApUsers.AsNoTracking().FirstOrDefaultAsync(x => x.UserName == userName);
             if (user != null)
             {
                 throw new CustomApplicationException("This user name is taken");
@@ -88,15 +108,37 @@ namespace Bll.Services.ApService
         public async Task<ApiResponse> AddUser(UserViewModel userInfoViewModel)
         {
             ApiResponse apiResponse = new();
+            if (string.IsNullOrWhiteSpace(userInfoViewModel.UserName))
+            {
+                throw new CustomApplicationException("User name is required");
+            }
+            if (string.IsNullOrEmpty(userInfoViewModel.Password))
+            {
+                // Never fall back to a default password.
+                throw new CustomApplicationException("Password is required");
+            }
             ApUser user = new()
             {
-                UserName = userInfoViewModel.UserName,
+                UserName = userInfoViewModel.UserName.Trim(),
                 Email = userInfoViewModel.Email,
-                Password = ProjectHelper.GenerateHashPassword(userInfoViewModel.Password ?? "12345"),
+                Password = ProjectHelper.GenerateHashPassword(userInfoViewModel.Password),
                 Mobile = userInfoViewModel.Mobile,
+                IsActive = 1,
+                IsPasswordReset = false,
+                CreatedBy = userInfoViewModel.CreatedBy,
+                CreatedDate = DateTime.UtcNow
             };
             await _unitOfWork.UserRepository.Create(user);
-            await _unitOfWork.CompleteAsync();
+            try
+            {
+                await _unitOfWork.CompleteAsync();
+            }
+            catch (DbUpdateException ex)
+            {
+                // The unique index on ApUser.UserName stops two simultaneous sign-ups with the same name.
+                _logger.Warning(ex, "Could not create user {UserName}", user.UserName);
+                throw new CustomApplicationException("This user name is taken");
+            }
             apiResponse.code = StatusCodes.Status200OK;
             apiResponse.messages = new List<string>() { "Success" };
             return apiResponse;
@@ -113,7 +155,7 @@ namespace Bll.Services.ApService
                     Email = a.Email,
                     Id = a.Id,
                     Mobile = a.Mobile,
-                    Password = a.Password,
+                    UserName = a.UserName,
                     Status = a.Status
                 }).ToList();
             }
@@ -137,7 +179,7 @@ namespace Bll.Services.ApService
                 Email = data.Email,
                 Id = data.Id,
                 Mobile = data.Mobile,
-                Password = data.Password,
+                UserName = data.UserName,
                 Status = data.Status
             };
             apiResponse.code = StatusCodes.Status200OK;

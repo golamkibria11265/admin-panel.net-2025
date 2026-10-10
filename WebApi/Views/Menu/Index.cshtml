@@ -1,9 +1,10 @@
-﻿@model IEnumerable<Dll.Models.ViewModels.MenuViewModel>
-@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpContextAccessor
+@model IEnumerable<Dll.Models.ViewModels.MenuViewModel>
 @{
-    var addPermission = HttpContextAccessor.HttpContext?.Session.GetString("addPermission");
-    var editPermission = HttpContextAccessor.HttpContext?.Session.GetString("editPermission");
-    var deletePermission = HttpContextAccessor.HttpContext?.Session.GetString("deletePermission");
+    // Set by MenuController.Index from the database. Only controls which buttons are shown;
+    // the server checks every Add/Edit/Delete request again.
+    var addPermission = ViewData["addPermission"] as string ?? "N";
+    var editPermission = ViewData["editPermission"] as string ?? "N";
+    var deletePermission = ViewData["deletePermission"] as string ?? "N";
 }
 
 <div class="col-12">
@@ -15,7 +16,7 @@
             <div class="card-header">
                 @if (addPermission == "Y")
                 {
-                    <a id="addNew" onclick="showInPopup('@Url.Action("Add","Menu",new {id=0,parent = 0, parentName = "HHH"})','New Menu')" class="btn btn-success text-white"><i class="fas fa-random"></i>Add New</a>
+                    <a id="addNew" href="#" class="btn btn-success text-white"><i class="fas fa-random"></i>Add New</a>
                 }
             </div>
         </div>
@@ -49,11 +50,33 @@
 
 @section Scripts {
     <script>
-        function initializeDataTable(id, name) 
+        const canEdit = '@editPermission' === 'Y';
+        const canDelete = '@deletePermission' === 'Y';
+        const addUrlBase = '@Url.Action("Add", "Menu")';
+        let currentParentId = 0;
+        let currentParentName = '';
+
+        function actionButtons(row) {
+            const id = parseInt(row.id, 10) || 0;
+            let html = '';
+            if (canEdit) {
+                html += `<button data-id="${id}" class="btn btn-sm btn-primary edit-btn">Edit</button>`;
+            }
+            if (canDelete) {
+                html += `<button data-id="${id}" class="btn btn-sm btn-danger delete-btn">Delete</button>`;
+            }
+            if (row.isAction == false) {
+                html += `<button data-id="${id}" data-name="${escapeHtml(row.name)}" class="btn btn-sm btn-info detail-btn">Next</button>`;
+            }
+            return html;
+        }
+
+        function initializeDataTable(id, name)
         {
             if ($.fn.DataTable.isDataTable('#menu_table')) {
                 $('#menu_table').DataTable().destroy();
             }
+            const textRender = function (data) { return escapeHtml(data); };
             $('#menu_table').DataTable({
                 "searching": true,
                 "processing": true,
@@ -65,52 +88,37 @@
                     "dataType": "json",
                     "data": function (d) {
                         d.id = id;
+                    },
+                    "dataSrc": function (json) {
+                        if (json.session_expired) {
+                            window.location.href = json.redirect_url;
+                            return [];
+                        }
+                        if (json.code && json.code !== 200 && json.messages) {
+                            json.messages.forEach(m => toastr.error(m));
+                            return [];
+                        }
+                        return json.data || [];
                     }
                 },
                 "columns": [
-                    { "data": "id" },
-                    { "data": "name" },
-                    { "data": "url" },
-                    { "data": "isAction" },
-                    { "data": "menuOrder" },
+                    { "data": "id", "render": textRender },
+                    { "data": "name", "render": textRender },
+                    { "data": "url", "render": textRender },
+                    { "data": "isAction", "render": textRender },
+                    { "data": "menuOrder", "render": textRender },
                     {
                         "data": "imageUrl",
                         "render": function (data, type, row) {
-                            return '<img src="' + data + '" alt="Logo" class="avatar avatar-sm" style="max-width: 25px; max-height: 25px;">';
+                            if (!data) return '';
+                            return `<img src="${escapeHtml(data)}" alt="Logo" class="avatar avatar-sm" style="max-width: 25px; max-height: 25px;">`;
                         }
                     },
                     {
                         "data": null,
+                        "orderable": false,
                         "render": function (data, type, row) {
-                            if (row.isAction == true && '@editPermission' == 'Y' && '@deletePermission' == 'N') {
-                                return `<button data-id="${row.id}" class="btn btn-sm btn-primary edit-btn">Edit</button>`;
-                            }
-                            if (row.isAction == true && '@editPermission' == 'N' && '@deletePermission' == 'Y') {
-                                return `<button data-id="${row.id}" class="btn btn-sm btn-danger delete-btn">Delete</button>`;
-                            }
-                            if (row.isAction == true && '@editPermission' == 'Y' && '@deletePermission' == 'Y') {
-                                return `<button data-id="${row.id}" class="btn btn-sm btn-primary edit-btn">Edit</button>` +
-                                    `<button data-id="${row.id}" class="btn btn-sm btn-danger delete-btn">Delete</button>`;
-                            }
-                            if (row.isAction == true && '@editPermission' == 'N' && '@deletePermission' == 'N') {
-                                return ``;
-                            }
-                            if (row.isAction == false && '@editPermission' == 'Y' && '@deletePermission' == 'N') {
-                                return `<button data-id="${row.id}" class="btn btn-sm btn-primary edit-btn">Edit</button>` +
-                                    `<button data-id="${row.id}"data-name="${row.name}" class="btn btn-sm btn-info detail-btn">Next</button>`;
-                            }
-                            if (row.isAction == false && '@editPermission' == 'N' && '@deletePermission' == 'Y') {
-                                return `<button data-id="${row.id}" class="btn btn-sm btn-danger delete-btn">Delete</button>` +
-                                    `<button data-id="${row.id}"data-name="${row.name}" class="btn btn-sm btn-info detail-btn">Next</button>`;
-                            }
-                            if (row.isAction == false && '@editPermission' == 'Y' && '@deletePermission' == 'Y') {
-                                return `<button data-id="${row.id}" class="btn btn-sm btn-primary edit-btn">Edit</button>` +
-                                    `<button data-id="${row.id}" class="btn btn-sm btn-danger delete-btn">Delete</button>` +
-                                    `<button data-id="${row.id}"data-name="${row.name}" class="btn btn-sm btn-info detail-btn">Next</button>`;
-                            }
-                            if (row.isAction == false && '@editPermission' == 'N' && '@deletePermission' == 'N') {
-                                return `<button data-id="${row.id}"data-name="${row.name}" class="btn btn-sm btn-info detail-btn">Next</button>`;
-                            }
+                            return actionButtons(row);
                         }
                     }
                 ],
@@ -122,49 +130,55 @@
             }).buttons().container().appendTo('#menu_table_wrapper .col-md-6:eq(0)');
             updateBreadcrumb(id, name);
         }
+
         function updateBreadcrumb(id, name) {
+            const numericId = parseInt(id, 10) || 0;
             $('#breadcrumbList').children().each(function () {
-                if ($(this).data('id') > id) {
+                if ($(this).data('id') > numericId) {
                     $(this).remove();
                 }
             });
-            var breadcrumbItem = $('#breadcrumbItem_' + id);
+            const breadcrumbItem = $('#breadcrumbItem_' + numericId);
             if (breadcrumbItem.length > 0) {
                 breadcrumbItem.addClass('active');
             } else {
-                $('#breadcrumbList').append(`<li class="breadcrumb-item-custom active" id="breadcrumbItem_${id}" data-id="${id}"><b>${name}</b></li>`);
+                // Built with jQuery .text() so a menu name can never inject HTML.
+                const li = $('<li class="breadcrumb-item-custom active"></li>')
+                    .attr('id', 'breadcrumbItem_' + numericId)
+                    .attr('data-id', numericId)
+                    .append($('<b></b>').text(name || ''));
+                li.on('click', function () {
+                    initializeDataTable(numericId || null, name);
+                });
+                $('#breadcrumbList').append(li);
             }
-            $('#breadcrumbItem_' + id).on('click', function () {
-                initializeDataTable(id, name);
-            });
-            var url = '@Url.Action("Add", "Menu")';
-            url += '?id=0&parent=' + id + '&parentName=' + name;
-            var addNewLink = document.getElementById('addNew');
-            addNewLink.setAttribute('onclick', "showInPopup('" + url + "','New Menu')");
+            currentParentId = numericId;
+            currentParentName = name || '';
         }
+
+        $('#addNew').on('click', function (e) {
+            e.preventDefault();
+            const url = addUrlBase + '?id=0&parent=' + encodeURIComponent(currentParentId) +
+                '&parentName=' + encodeURIComponent(currentParentName);
+            showInPopup(url, 'New Menu');
+        });
         $(document).ready(function () {
-            initializeDataTable(null,"Parent");
+            initializeDataTable(null, "Parent");
         });
         $('#menu_table').on('click', '.edit-btn', function () {
-            var id = $(this).data('id');
-            var editUrl = `@Url.Action("Edit", "Menu")?id=${id}`;
+            const id = parseInt($(this).data('id'), 10) || 0;
+            const editUrl = '@Url.Action("Edit", "Menu")?id=' + id;
             showInPopup(editUrl, 'Update Menu');
         });
         $('#menu_table').on('click', '.delete-btn', function () {
-            var id = $(this).data('id');
-            var deleteUrl = `@Url.Action("Delete", "Menu")?id=${id}`;
-            jQueryAjaxDelete(deleteUrl, id);
+            const id = parseInt($(this).data('id'), 10) || 0;
+            jQueryAjaxDelete('@Url.Action("Delete", "Menu")', id);
         });
         $('#menu_table').on('click', '.detail-btn', function () {
-            var id = $(this).data('id');
-            var name = $(this).data('name');
-            initializeDataTable(id,name);
-            updateBreadcrumb(id, name);
+            const id = parseInt($(this).data('id'), 10) || 0;
+            const name = $(this).data('name');
+            initializeDataTable(id, name);
         });
     </script>
-    <script src="~/js/customscripts/menu.js"></script>
+    <script src="~/js/CustomScripts/menu.js" asp-append-version="true"></script>
 }
-
-
-
-

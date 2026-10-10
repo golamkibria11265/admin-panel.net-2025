@@ -1,0 +1,14 @@
+@{
+    ViewData["Title"] = "Access denied";
+}
+<div class="container-xl">
+    <div class="empty">
+        <p class="empty-title">Access denied</p>
+        <p class="empty-subtitle text-secondary">
+            You do not have permission to open this page. Please contact your administrator if you need access.
+        </p>
+        <div class="empty-action">
+            <a href="@Url.Action("Index", "Home")" class="btn btn-primary">Back to dashboard</a>
+        </div>
+    </div>
+</div>

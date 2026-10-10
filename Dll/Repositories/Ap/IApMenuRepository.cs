@@ -1,4 +1,4 @@
-﻿using Dll.Data;
+using Dll.Data;
 using Dll.Data.Entities;
 using Dll.Models.RequestModels;
 using Microsoft.AspNetCore.Http;
@@ -20,174 +20,84 @@ namespace Dll.Repositories.Ap
         Task CustomMethodToDeleteMenuByIdAsync(ApMenu menuModel);
         Task<PagedListResponse<ApMenu>> CustomMethodToGetAllMenus(MenuParamsRequest menuParamsRequest);
     }
+
+    /// <summary>
+    /// The cache key "MenuRepository" always holds the COMPLETE menu list (written only by RepositoryBase.FindAll).
+    /// Every change removes the key so the next read reloads it from the database. Partial or filtered lists are
+    /// never written to the cache.
+    /// </summary>
     public class MenuRepository : RepositoryBase<ApMenu>, IApMenuRepository
     {
+        private const string CacheName = "MenuRepository";
         private readonly DotNetContext _dotNetContext;
-        private readonly string _cacheName = "MenuRepository";
         private readonly IRedisService _iRedisService;
-        public MenuRepository(DotNetContext dotNetContext, IRedisService iRedisService) : base(dotNetContext, iRedisService, "MenuRepository")
+
+        public MenuRepository(DotNetContext dotNetContext, IRedisService iRedisService) : base(dotNetContext, iRedisService, CacheName)
         {
             _dotNetContext = dotNetContext;
             _iRedisService = iRedisService;
         }
+
         public async Task<PagedListResponse<ApMenu>> CustomMethodToGetAllMenus(MenuParamsRequest menuParamsRequest)
         {
-            var cacheName = await _iRedisService.GetAsync(_cacheName);
-            if (cacheName != null)
-            {
-                return await PagingFromCache(menuParamsRequest);
-            }
-            var queryableMenuList = _dotNetContext.ApMenus.AsQueryable();
+            int pageNumber = menuParamsRequest.PageNumber < 1 ? 1 : menuParamsRequest.PageNumber;
+            int pageSize = menuParamsRequest.PageSize < 1 ? 10 : menuParamsRequest.PageSize;
+
+            IQueryable<ApMenu> query = _dotNetContext.ApMenus.AsNoTracking();
             if (!string.IsNullOrEmpty(menuParamsRequest.SearchString))
             {
-                queryableMenuList = queryableMenuList.Where(menu => menu.Name != null && menu.Name.Contains(menuParamsRequest.SearchString) || menu.Url != null && menu.Url.Contains(menuParamsRequest.SearchString));
+                string search = menuParamsRequest.SearchString;
+                query = query.Where(menu => (menu.Name != null && menu.Name.Contains(search)) || (menu.Url != null && menu.Url.Contains(search)));
             }
-            if (!string.IsNullOrEmpty(menuParamsRequest.Parent))
+            if (!string.IsNullOrEmpty(menuParamsRequest.Parent) && int.TryParse(menuParamsRequest.Parent, out int parentId) && parentId > 0)
             {
-                queryableMenuList = queryableMenuList.Where(menu => menu.Parent != null && menu.Parent == Convert.ToInt32(menuParamsRequest.Parent));
+                query = query.Where(menu => menu.Parent == parentId);
             }
-            var serializedMenuList = JsonConvert.SerializeObject(await queryableMenuList.ToListAsync(), ProjectHelper.GetJsonSettings());
-            if (string.IsNullOrEmpty(menuParamsRequest.Parent))
+            else
             {
-                queryableMenuList = queryableMenuList.Where(menu => menu.Parent == null);
+                query = query.Where(menu => menu.Parent == null);
             }
-            await _iRedisService.SetAsync(_cacheName, Encoding.UTF8.GetBytes(serializedMenuList));
-            return await PagedListResponse<ApMenu>.CreateAsync(queryableMenuList, menuParamsRequest.PageNumber, menuParamsRequest.PageSize);
+            // A stable order is required for Skip/Take paging, otherwise rows repeat or go missing between pages.
+            query = query.OrderBy(menu => menu.MenuOrder).ThenBy(menu => menu.Id);
+            return await PagedListResponse<ApMenu>.CreateAsync(query, pageNumber, pageSize);
         }
-        public async Task<PagedListResponse<ApMenu>> PagingFromCache(MenuParamsRequest menuParamsRequest)
-        {
-            var cacheName = await _iRedisService.GetAsync(_cacheName);
-            List<ApMenu>? menuList = new();
-            if (cacheName != null)
-            {
-                var stringData = Encoding.UTF8.GetString(cacheName);
-                menuList = JsonConvert.DeserializeObject<List<ApMenu>>(stringData) ?? [];
-                if (!string.IsNullOrEmpty(menuParamsRequest.SearchString))
-                {
-                    menuList = menuList.Where(menu => menu.Name != null && menu.Name.Contains(menuParamsRequest.SearchString) || menu.Url != null && menu.Url.Contains(menuParamsRequest.SearchString)).ToList();
-                }
-                if (!string.IsNullOrEmpty(menuParamsRequest.Parent))
-                {
-                    menuList = menuList.Where(menu => menu.Parent != null && menu.Parent == Convert.ToInt32(menuParamsRequest.Parent)).ToList();
-                }
-                else
-                {
-                    menuList = menuList.Where(menu => menu.Parent == null).ToList();
-                }
-            }
-            return await PagedListResponse<ApMenu>.CreateAsync(menuList, menuParamsRequest.PageNumber, menuParamsRequest.PageSize);
-        }
+
         public async Task<ApMenu> CustomMethodToGetMenuById(int id)
         {
-            ApMenu? menu = null;
-            var cacheName = await _iRedisService.GetAsync(_cacheName);
-            List<ApMenu>? menuList = new();
-            if (cacheName != null)
+            var cached = await _iRedisService.GetAsync(CacheName);
+            if (cached != null)
             {
-                var stringData = Encoding.UTF8.GetString(cacheName);
-                menuList = JsonConvert.DeserializeObject<List<ApMenu>>(stringData);
+                var menuList = JsonConvert.DeserializeObject<List<ApMenu>>(Encoding.UTF8.GetString(cached), ProjectHelper.GetJsonSettings());
+                var fromCache = menuList?.FirstOrDefault(x => x.Id == id);
+                if (fromCache != null)
+                {
+                    return fromCache;
+                }
             }
-            if (menuList != null && menuList.Any())
-            {
-                menu = menuList.FirstOrDefault(x => x.Id == id);
-            }
-            if (menu != null)
-            {
-                return menu;
-            }
-            menu = await _dotNetContext.ApMenus.FirstOrDefaultAsync(x => x.Id == id);
-            if (menu != null && menuList != null)
-            {
-                menuList.Add(menu);
-                menuList = menuList.OrderBy(x => x.Id).ToList();
-                var serializedMenuList = JsonConvert.SerializeObject(menuList, ProjectHelper.GetJsonSettings());
-                await _iRedisService.SetAsync(_cacheName, Encoding.UTF8.GetBytes(serializedMenuList));
-            }
+            var menu = await _dotNetContext.ApMenus.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
             if (menu == null)
             {
                 throw new CustomApplicationException("Menu is not found", StatusCodes.Status404NotFound);
             }
             return menu;
         }
+
         public async Task CustomMethodToAddMenuAsync(ApMenu menuModel)
         {
+            await _iRedisService.RemoveAsync(CacheName);
             await _dotNetContext.ApMenus.AddAsync(menuModel);
-            await _dotNetContext.SaveChangesAsync();
-
-            var cacheName = await _iRedisService.GetAsync(_cacheName);
-            List<ApMenu>? menuList = new();
-            if (cacheName != null)
-            {
-                var stringData = Encoding.UTF8.GetString(cacheName);
-                menuList = JsonConvert.DeserializeObject<List<ApMenu>>(stringData);
-            }
-            if (menuList != null && menuList.Any(x => x.Name == menuModel.Name))
-            {
-                menuList.RemoveAll(m => m.Name == menuModel.Name);
-            }
-            if (menuModel != null && menuList != null)
-            {
-                menuList.Add(menuModel);
-                menuList = menuList.OrderBy(x => x.Id).ToList();
-                var serializedMenuList = JsonConvert.SerializeObject(menuList, ProjectHelper.GetJsonSettings());
-                await _iRedisService.SetAsync(_cacheName, Encoding.UTF8.GetBytes(serializedMenuList));
-            }
         }
+
         public async Task CustomMethodToUpdateMenuByIdAsync(ApMenu menuModel)
         {
+            await _iRedisService.RemoveAsync(CacheName);
             _dotNetContext.ApMenus.Update(menuModel);
-
-            var cacheName = await _iRedisService.GetAsync(_cacheName);
-            List<ApMenu>? menuList = new();
-
-            if (cacheName != null)
-            {
-                var stringData = Encoding.UTF8.GetString(cacheName);
-                menuList = JsonConvert.DeserializeObject<List<ApMenu>>(stringData);
-            }
-            var existingMenuIndex = -1;
-            if (menuList != null && menuList.Any())
-            {
-                existingMenuIndex = menuList.FindIndex(x => x.Id == menuModel.Id);
-            }
-            if (menuList != null && existingMenuIndex != -1)
-            {
-                menuList[existingMenuIndex] = menuModel;
-                menuList = menuList.OrderBy(x => x.Id).ToList();
-                var serializedMenuList = JsonConvert.SerializeObject(menuList, ProjectHelper.GetJsonSettings());
-                await _iRedisService.SetAsync(_cacheName, Encoding.UTF8.GetBytes(serializedMenuList));
-            }
-            else if (menuList != null)
-            {
-                menuList.Add(menuModel);
-                menuList = menuList.OrderBy(x => x.Id).ToList();
-                var serializedMenuList = JsonConvert.SerializeObject(menuList, ProjectHelper.GetJsonSettings());
-                await _iRedisService.SetAsync(_cacheName, Encoding.UTF8.GetBytes(serializedMenuList));
-            }
         }
+
         public async Task CustomMethodToDeleteMenuByIdAsync(ApMenu menuModel)
         {
+            await _iRedisService.RemoveAsync(CacheName);
             _dotNetContext.ApMenus.Remove(menuModel);
-
-            var cacheName = await _iRedisService.GetAsync(_cacheName);
-            List<ApMenu>? menuList = new List<ApMenu>();
-
-            if (cacheName != null)
-            {
-                var stringData = Encoding.UTF8.GetString(cacheName);
-                menuList = JsonConvert.DeserializeObject<List<ApMenu>>(stringData);
-            }
-            var existingMenuIndex = -1;
-            if (menuList != null && menuList.Any())
-            {
-                existingMenuIndex = menuList.FindIndex(x => x.Id == menuModel.Id);
-            }
-            if (menuList != null && existingMenuIndex != -1)
-            {
-                menuList.RemoveAt(existingMenuIndex);
-                var serializedMenuList = JsonConvert.SerializeObject(menuList, ProjectHelper.GetJsonSettings());
-                await _iRedisService.SetAsync(_cacheName, Encoding.UTF8.GetBytes(serializedMenuList));
-            }
         }
     }
 }

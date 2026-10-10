@@ -1,18 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Dll.Models.ViewModels
 {
     public class LogInViewModel
     {
         [Display(Name = "Username")]
+        [Required(ErrorMessage = "User name is required.")]
+        [StringLength(256)]
         public string? userName { get; set; }
 
         [Display(Name = "Password")]
+        [Required(ErrorMessage = "Password is required.")]
+        [StringLength(128)]
         public string? password { get; set; }
     }
 }

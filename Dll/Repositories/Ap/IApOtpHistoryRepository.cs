@@ -11,7 +11,7 @@ namespace Dll.Repositories.Ap
     {
         private readonly DotNetContext _context;
         private readonly IRedisService _iRedisService;
-        public OtpHistoryRepository(DotNetContext dotNetContext, IRedisService iRedisService) : base(dotNetContext, iRedisService, "OtpHistoryRepository")
+        public OtpHistoryRepository(DotNetContext dotNetContext, IRedisService iRedisService) : base(dotNetContext, iRedisService, null) // OTPs are secrets: never cached
         {
             _context = dotNetContext;
             _iRedisService = iRedisService;

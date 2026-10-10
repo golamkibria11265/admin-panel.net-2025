@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
+using System.ComponentModel.DataAnnotations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,8 +12,12 @@ namespace Dll.Models.ViewModels
     {
         public int Id { get; set; }
 
+        [Required(ErrorMessage = "Menu name is required.")]
+        [StringLength(200)]
         public string? Name { get; set; }
 
+        [StringLength(500)]
+        [RegularExpression(@"^[A-Za-z0-9_/\-]*$", ErrorMessage = "URL may contain only letters, digits, / _ -")]
         public string? Url { get; set; }
 
         public int? Parent { get; set; }
