@@ -1,0 +1,93 @@
+# ==========================================================================
+# .dockerignore - production build context for the Admin Panel WebApi image
+# Keep this file in the solution root (next to Dockerfile and DotNet.sln),
+# named exactly ".dockerignore" (no .txt extension).
+# Anything listed here is never sent to Docker, never ends up in the image,
+# and never invalidates the build cache.
+# ==========================================================================
+
+# --- Build output (Visual Studio / dotnet). These contain Windows paths and break Linux builds ---
+**/bin
+**/obj
+**/TestResults
+**/BenchmarkDotNet.Artifacts
+
+# --- IDE and editor files ---
+**/.vs
+**/.vscode
+**/.idea
+**/*.user
+**/*.suo
+**/*.userosscache
+**/*.sln.docstates
+**/*.DotSettings.user
+**/launchSettings.json
+
+# --- Source control and CI (not needed to build the image) ---
+.git
+.gitignore
+.gitattributes
+.github
+.gitlab-ci.yml
+.azure-pipelines
+.editorconfig
+
+# --- Secrets and environment-specific config: NEVER ship these in an image ---
+.env
+.env.*
+!.env.example
+**/appsettings.Development.json
+**/appsettings.*.local.json
+**/appsettings.Staging.json
+**/secrets.json
+**/*.pfx
+**/*.p12
+**/*.pem
+**/*.key
+**/*.crt
+**/*.cer
+**/*.snk
+**/*.publishsettings
+**/*.pubxml
+**/*.pubxml.user
+**/PublishProfiles
+**/dataprotection-keys
+
+# --- Logs, dumps and local data ---
+**/logs
+**/Logs
+**/*.log
+**/*.dmp
+**/*.mdmp
+**/*.bak
+**/*.mdf
+**/*.ldf
+**/*.sqlite
+**/*.db
+
+# --- Dependencies installed on the developer machine (restored fresh in the image) ---
+**/node_modules
+**/.nuget
+
+# --- Docker / deployment files (the Dockerfile is still used by the builder) ---
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+.dockerignore
+deploy.sh
+nginx
+
+# --- Docs and notes ---
+*.md
+*.txt
+**/README*
+**/CURRENT-JOURNAL.txt
+
+# --- Projects not needed for the WebApi image (it only references Bll, Dll, Utility) ---
+HangFireApi
+Logging
+
+# --- OS junk ---
+**/.DS_Store
+**/Thumbs.db
+**/desktop.ini
