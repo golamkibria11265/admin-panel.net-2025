@@ -120,15 +120,15 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-#region Data seeding (one-off)
+#region data seeding (one-off)
 // To seed a fresh database: set the environment variable Seed__AdminPassword (at least 12 characters,
 // letters and digits), uncomment this block, run once, then comment it again and remove the variable.
 // Seeding is skipped automatically if the "admin" user already exists.
-//using (var scope = app.Services.CreateScope())
-//{
-//    var seeder = scope.ServiceProvider.GetRequiredService<IDataSeedingService>();
-//    await seeder.SeedDataAsync();
-//}
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<IDataSeedingService>();
+    await seeder.SeedDataAsync();
+}
 #endregion
 
 // Basic security headers for every response.
