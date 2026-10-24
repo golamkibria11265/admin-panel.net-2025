@@ -1,0 +1,404 @@
+home → Home (users live here)
+usr  → Unix System Resources (NOT user!)
+var  → Variable data (changes at runtime)
+etc  → Editable Text Configuration
+opt  → Optional/Third-party software
+sudo → Superuser do
+
+1️.Confirm OS & user
+	sudo lsb_release -a
+	sudo whoami
+2.Update the system
+	sudo apt update          <!--refreshes your system's list of available software-->
+	sudo apt upgrade -y      <!--installs the newer versions of software you already have-->
+	sudo apt autoremove -y   <!--removes packages that were installed automatically as dependencies but that nothing needs anymore-->
+3.Check network & public IP
+	sudo ip a
+	sudo ip route
+4.Create sudo  powered user
+	sudo adduser deployment
+    sudo usermod -aG sudo deployment
+5.Check SSH security
+    sudo ss -tulnp
+	sudo ss -tulnp | grep ssh
+	sudo nano /etc/ssh/sshd_config
+		i.PermitRootLogin no
+		ii.PasswordAuthentication no
+	sudo systemctl restart ssh
+6.Firewall (before installing anything)
+	sudo ufw status
+	sudo ufw default deny incoming
+	sudo ufw default allow outgoing
+	sudo ufw allow OpenSSH
+	sudo ufw allow 80/tcp  		<!--For HTTP nginx-->
+	sudo ufw allow 443/tcp 		<!--For HTTPS nginx-->
+	sudo ufw allow 1433    		<!--For MSSQL SERVER-->
+	sudo ufw allow from 203.0.113.10 to any port 1433 proto tcp
+	sudo ufw enable
+	sudo ufw status verbose
+    sudo ufw reload
+7.Time & timezone
+	sudo timedatectl
+	sudo timedatectl set-timezone Asia/Dhaka
+	
+	
+1.NGINX Configuration
+	sudo ss -tulpn
+	sudo ss -tulpn | grep nginx
+	sudo ps aux | grep nginx
+	sudo systemctl status nginx
+	sudo nginx -t
+	
+	sudo apt update
+    sudo apt install nginx -y
+	
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+	sudo systemctl stop nginx
+    sudo systemctl reload nginx
+	sudo systemctl daemon-reload
+	
+	nano /lib/systemd/system/nginx.service   <!--It tells systemd how to start, stop, and manage Nginx-->
+	
+	sudo rm /etc/nginx/sites-enabled/default <!--Remove default nginx site configuration-->
+	
+	sudo nano /etc/nginx/sites-available/identity-server <!--Create custom nginx site configuration-->
+
+    server {
+    listen 80;
+    server_name 103.159.37.140;
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    access_log /var/log/nginx/identity-server.access.log;
+    error_log /var/log/nginx/identity-server.error.log warn;
+    }
+	
+    server {
+        listen 443 ssl;
+        server_name 103.159.37.140;
+        
+        # Self-signed certificate
+        ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
+        ssl_certificate_key /etc/nginx/ssl/nginx-selfsigned.key;
+        
+        # Or Let's Encrypt certificate
+        # ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+        # ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+        
+        location / {
+            proxy_pass https://127.0.0.1:5001;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $host;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+        access_log /var/log/nginx/identity-server.access.log;
+        error_log /var/log/nginx/identity-server.error.log warn;
+    }
+	
+	sudo ln -s /etc/nginx/sites-available/identity-server /etc/nginx/sites-enabled/ <!--Enable custom nginx site configuration-->
+	
+	sudo systemctl reload nginx
+	
+	sudo nginx -T | grep -A 20 "server_name 103.159.37.140" <!--To Check Which nginx site serving on behalf of server-->
+1.Cetificate configuration for nginx
+	sudo apt install certbot python3-certbot-nginx
+	sudo mkdir -p /etc/nginx/ssl
+1.DB MSSQL Install & Configuration
+	sudo ss -tulpn
+	sudo ss -tulpn | grep mssql-server
+    sudo systemctl status mssql-server
+	sudo systemctl start mssql-server      
+	sudo systemctl stop mssql-server       
+	sudo systemctl enable mssql-server     
+	sudo systemctl disable mssql-server    
+
+	curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+	| sudo gpg --dearmor --yes -o /usr/share/keyrings/microsoft-prod.gpg
+
+    ls -l /usr/share/keyrings/microsoft-prod.gpg <!--To Check If The GPG KEY exist-->
+	
+	sudo curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/mssql-server-2022.list \-o /etc/apt/sources.list.d/mssql-server-2022.list
+	
+	ls -l /etc/apt/sources.list.d/mssql-server-2022.list <!--To Check If The File exist-->
+	
+	sudo apt-get update
+	sudo apt-get install -y mssql-server
+	
+	sudo /opt/mssql/bin/mssql-conf setup
+1..Net Environment Installation & Configuration
+	sudo apt-get install dotnet-sdk-8.0
+	sudo apt-get install dotnet-runtime-8.0
+	sudo reboot
+1.Application Configuration
+	sudo mkdir -p /opt/identity-server
+	sudo rm -rf /opt/identity-server 
+	
+	cd /opt/identity-server 
+	
+    sudo dotnet IdentityServerApi.dll
+	
+	sudo systemctl daemon-reload
+    sudo systemctl restart identity-server
+    sudo systemctl status identity-server
+	
+    sudo systemctl start identity-server
+	sudo systemctl stop identity-server
+
+	curl -I http://127.0.0.1:5000
+	
+	sudo nano /lib/systemd/system/identity-server.service
+
+	[Unit]
+	Description=Identity Server (OpenIddict)
+	After=network.target
+	
+	[Service]
+	Type=simple
+	User=deployment
+	Group=deployment
+	WorkingDirectory=/opt/identity-server
+	ExecStart=/usr/bin/dotnet IdentityServerApi.dll
+	Restart=always
+	RestartSec=10
+	KillSignal=SIGINT
+	SyslogIdentifier=identity-server
+	Environment=ASPNETCORE_ENVIRONMENT=Production
+	StandardOutput=journal
+	StandardError=journal
+	
+	[Install]
+	WantedBy=multi-user.target
+
+	
+	sudo systemctl enable identity-server.service
+	sudo systemctl disable identity-server.service
+	sudo systemctl daemon-reload
+1.appsettings.Production configuration for KESTRAL
+  "Kestrel": {
+    "Endpoints": {
+      "Https": {
+        "Url": "https://127.0.0.1:5001",
+        "Certificate": {
+          "Path": "/etc/aspnet/ssl/aspnet.crt",
+          "KeyPath": "/etc/aspnet/ssl/aspnet.key"
+        }
+      }
+    }
+  }
+1.Give Permission & Certificate configuration for .Net App
+   
+   sudo chown -R deployment:deployment /opt/identity-server  <!--give ownership to user deployment for the following path-->
+   sudo chown -R root:root /opt/identity-server <!--Restore original ownership to user root for the following path-->
+   sudo ls -ld /opt/identity-server  <!--verify ownership & permissions-->    
+
+   sudo chown -R deployment:deployment /var/log
+   sudo chown -R root:root /var/log
+   sudo ls -ld /var/log  <!--verify ownership & permissions-->                          
+
+   sudo mkdir -p /etc/aspnet/ssl
+   sudo chmod 755 /etc/aspnet/
+   sudo chmod 700 /etc/aspnet/ssl
+   sudo chmod 755 /etc/aspnet/ssl/
+   
+   sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+   	-keyout /etc/aspnet/ssl/aspnet.key \
+   	-out /etc/aspnet/ssl/aspnet.crt \
+   	-subj "/C=US/ST=State/L=City/O=Organization/CN=localhost" \
+   	-addext "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:127.0.0.1"
+    
+   sudo chown deployment:deployment /etc/aspnet/ssl/
+   sudo chown deployment:deployment /etc/aspnet/ssl/aspnet.crt
+   sudo chown deployment:deployment /etc/aspnet/ssl/aspnet.key
+   
+   sudo chmod 644 /etc/aspnet/ssl/aspnet.crt
+   sudo chmod 600 /etc/aspnet/ssl/aspnet.key
+
+   ls -la /etc/aspnet/
+   ls -la /etc/aspnet/ssl/
+   
+   cd /opt/identity-server
+   
+   sudo -u deployment bash -c "ASPNETCORE_ENVIRONMENT=Production dotnet IdentityServerApi.dll"
+
+1. CICD Pipeline implementation
+	
+   ssh-keygen -t ed25519 -C "identity-server"       <!--create a ssh public & private key-->
+   
+   /home/deployment/.ssh/id_ed25519
+   
+   cat ~/.ssh/id_ed25519.pub
+   
+   /home/deployment/.ssh/id_ed25519.pub
+   
+   cat ~/.ssh/id_ed25519
+   
+   sudo nano /home/deployment/.ssh/authorized_keys  <!--create a file & past the public key here-->
+
+   sudo chown -R deployment:deployment /home/deployment/.ssh  <!--permission given to the deployment user will be used in github-->
+   sudo chmod 700 /home/deployment/.ssh
+   sudo chmod 600 /home/deployment/.ssh/authorized_keys
+   
+   
+   #github-configuration
+   
+   VPS_HOST	103.159.37.140
+   VPS_USER	deployment
+   VPS_SSH_KEY	Private SSH key (full content)
+   VPS_APP_PATH	/opt/identity-server
+   
+   sudo chown -R deployment:deployment /opt/identity-server
+   sudo chmod -R 755 /opt/identity-server
+   
+   ssh deployment@103.159.37.140
+   sudo visudo
+   deployment ALL=(ALL) NOPASSWD:ALL
+   
+   
+
+1. Docker
+	# ---- Check the server ----
+	sudo nproc                            <!--show number of CPU cores-->
+	sudo free -h                          <!--show RAM and swap, human readable-->
+	sudo df -h /                          <!--show disk size, used and free space-->
+	
+	# ---- Check Docker ----
+	sudo docker --version                 <!--show installed Docker version-->
+	sudo docker compose version           <!--show installed Docker Compose version-->       
+	
+	sudo apt install -y ca-certificates curl
+	sudo install -m 0755 -d /etc/apt/keyrings
+	sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+	sudo chmod a+r /etc/apt/keyrings/docker.asc
+	echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+	sudo apt update
+	sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+	  
+	# ---- Docker daemon settings ----
+	cd /etc/docker                        <!--FIXED: needs the leading / to go to the folder from anywhere-->
+
+	# the JSON below sets: log rotation (10MB x 3 files), live-restore (containers keep running when Docker restarts), no-new-privileges (security)
+	sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
+	{
+	"log-driver": "json-file",
+	"log-opts": { "max-size": "10m", "max-file": "3" },
+	"live-restore": true,
+	"no-new-privileges": true
+	}
+	EOF
+	
+	ls -tr | grep -i daemon               <!--check that daemon.json exists in this folder-->
+	sudo cat daemon.json                  <!--show the file contents-->
+	python3 -m json.tool daemon.json      <!--check the JSON is valid; prints it neatly if OK-->
+	
+	# ---- Swap (2 GB) ----
+	sudo fallocate -l 2G /swapfile        <!--reserve a 2 GB file on disk for swap-->
+	sudo chmod 600 /swapfile              <!--only root can read it-->
+	sudo mkswap /swapfile                 <!--format the file as swap-->
+	sudo swapon /swapfile                 <!--turn swap on now-->
+	echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab   <!--keep swap after reboot; run only ONCE-->
+	sudo swapon --show                    <!--list active swap; empty means no swap-->
+	
+	# ---- Undo swap (do NOT run unless you want to remove swap) ----
+	sudo swapoff /swapfile                <!--CAUTION: turn swap off-->
+	sudo rm /swapfile                     <!--CAUTION: delete the swap file; also remove its line from /etc/fstab-->
+	
+	# ---- Restart and service checks ----
+	sudo systemctl restart docker         <!--restart Docker so daemon.json settings apply-->
+	sudo systemctl is-active docker       <!--is Docker running right now? expect: active-->
+	sudo systemctl is-enabled docker      <!--will Docker start at boot? expect: enabled-->
+	sudo systemctl enable --now docker    <!--enable at boot AND start it now-->
+	
+	# ---- Test Docker ----
+	sudo docker images                    <!--list downloaded images-->
+	sudo docker ps                        <!--list running containers-->
+	sudo docker run --rm hello-world      <!--run a test container and delete it afterwards-->
+	
+	# ---- Last step ----
+	sudo reboot                           <!--restart the server; after login, check docker is-active again-->
+	  
+	# ---- docker compose file setup ----
+	sudo mkdir -p /opt/app-prod                           # create the project folder (only root/sudo can create folders under /opt)
+	sudo chown deployment:deployment /opt/app-prod  	  # if the user has sudo power, it can give itself folder/file permission; makes 'deployment' the owner so WinSCP can upload here
+	cd /opt/app-prod                                	  # docker compose must be run from the folder containing docker-compose.yml and .env
+	sudo ls -la                                     	  # list all files including hidden ones (.env); confirm docker-compose.yml and .env are present
+	sudo docker compose up -d                       	  # create and start Redis + MSSQL containers in the background (-d = detached)
+														  
+	# ---- post-deploy checks ----                        
+	sudo docker compose ps                          	  # show container status; both must say "Up ... (healthy)" (MSSQL needs ~1 min)
+	sudo docker exec app-prod-redis redis-cli ping  	  # test Redis WITH password; expected: PONG
+	
+	sudo docker exec -e REDISCLI_AUTH= app-prod-redis redis-cli ping                                                                    # test Redis WITHOUT password; expected: NOAUTH error (proves password is enforced)
+	sudo docker exec app-prod-mssql sh -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -Q "SELECT 1"'   # test MSSQL login with SA password; expected: 1
+	
+	sudo ss -tlnp | grep -E '6379|1433'                   # check which network addresses Redis/MSSQL listen on; must show 127.0.0.1 only, never 0.0.0.0 (PCI: not exposed to network)
+	sudo docker volume ls | grep app-prod                 # list persistent data storage; expected: app-prod_mssql_data and app-prod_redis_data (data survives restarts; 'down -v' deletes them)
+    
+	ssh -L 14330:127.0.0.1:1433 deployment@103.159.37.23  # in windows power shell
+
+	Open SSMS and connect:
+	    Server: 127.0.0.1,14330
+	    Authentication: SQL Server Authentication
+	    Login / Password: your SQL login
+	    Tick Trust server certificate
+
+	sudo usermod -aG docker deployment
+	sudo gpasswd -d deployment docker
+	sudo chown deployment:deployment /var/lib/docker      #used to give permission to a user
+	sudo chown root:root /var/lib/docker                  #used to revoke permission
+	sudo apt install acl                                  
+	sudo setfacl -m u:[deployment]:rx /var/lib/docker     # give one user read + enter access
+    sudo setfacl -x u:[deployment] /var/lib/docker        # revoke that one user's access
+    getfacl /var/lib/docker                               # list who has access
+
+
+
+
+Dockerizing-dotnet-app && keep it in a registry:
+
+	1. create a repo in docker hub.
+	2. create two token for dev and prod server. one for push and another for pull.
+	3. go to project root.
+	4. log in with dev token.
+	
+	5. create a Dockerfile and .dockerignore.
+	6. docker build -t [NAMESPACE]/[REPO_NAME]:1.0.0 .
+	   docker build -t golamkibria11265/dot-net-app:1.0.0 .
+	7. docker push [NAMESPACE]/[REPO_NAME]:1.0.0
+	   docker push golamkibria11265/dot-net-app:1.0.0
+	   
+	8. sudo docker login -u [NAMESPACE]
+	   sudo docker login -u golamkibria11265
+	9. sudo docker compose pull
+	10.sudo docker compose up -d
+	
+	11. sudo docker compose ps nginx
+	
+	
+	curl -sk -o /dev/null -w "HTTP %{http_code}\n" https://103.159.37.23:8443/
+    sudo docker compose logs --tail=80 webapi | grep -i -E "sql|login failed|cannot open|timeout|exception" | head -20
+	
+
+
+	
+
+
+
+
+	
+	
+
+
+
