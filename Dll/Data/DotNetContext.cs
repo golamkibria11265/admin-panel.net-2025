@@ -33,7 +33,7 @@ public partial class DotNetContext : DbContext
 
     public virtual DbSet<ApUserRole> ApUserRoles { get; set; }
     #endregion
-
+    //protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) => optionsBuilder.UseSqlServer("Server=127.0.0.1,14330;Database=DotNet;User Id=sa;Password=admin@12345;Encrypt=True;TrustServerCertificate=True");
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ApMenu>(entity =>
