@@ -37,6 +37,7 @@ sudo → Superuser do
 	sudo ufw enable
 	sudo ufw status verbose
     sudo ufw reload
+	sudo ufw delete allow 1433/tcp
 7.Time & timezone
 	sudo timedatectl
 	sudo timedatectl set-timezone Asia/Dhaka
@@ -378,13 +379,12 @@ Dockerizing-dotnet-app && keep it in a registry:
 	   docker build -t golamkibria11265/dot-net-app:1.0.0 .
 	7. docker push [NAMESPACE]/[REPO_NAME]:1.0.0
 	   docker push golamkibria11265/dot-net-app:1.0.0
-	   
 	8. sudo docker login -u [NAMESPACE]
 	   sudo docker login -u golamkibria11265
 	9. sudo docker compose pull
 	10.sudo docker compose up -d
-	
 	11. sudo docker compose ps nginx
+	12. 12. sudo docker compose down --rmi all
 	
 	
 	curl -sk -o /dev/null -w "HTTP %{http_code}\n" https://103.159.37.23:8443/
